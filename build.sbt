@@ -1,4 +1,6 @@
-lazy val parserLib = ProjectRef(file("../scala-tptp-parser"), "tptpParser")
+lazy val parserLib = ProjectRef(uri("git://github.com/leoprover/scala-tptp-parser"), "tptpParser")
+
+//ProjectRef(file("../scala-tptp-parser"), "tptpParser")
    // replace with GitHub link when possible: RootProject(uri("git://github.com/...#tagOrCommit"))
 
 lazy val logicEmbedding = (project in file("."))
