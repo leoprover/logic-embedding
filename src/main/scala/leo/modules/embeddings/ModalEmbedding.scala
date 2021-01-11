@@ -353,13 +353,3 @@ object ModalEmbedding {
   }
 
 }
-
-object Test {
-  def main(args: Array[String]): Unit = {
-//    val file = io.Source.fromFile("/home/lex/dev/Leo-III/demo/modal/ex5_multimodal_wisemen.p")
-    val file = io.Source.fromFile("/home/lex/dev/Leo-III/demo/modal/ex1_semantics_ho.p")
-    val input = TPTPParser.problem(file)
-    val transformed = ModalEmbedding.apply(input.formulas, Set(ModalEmbedding.EmbeddingOption.MONOMORPHIC))
-    transformed.foreach(t => println(t.pretty))
-  }
-}
