@@ -13,6 +13,27 @@ package object embeddings {
     def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[OptionType]): Seq[AnnotatedFormula]
   }
 
+
+  final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
+  final def serializeType(typ: TPTP.THF.Type): String = {
+    import TPTP.THF.{FunctionTerm, BinaryFormula, FunTyConstructor, SumTyConstructor, ProductTyConstructor}
+
+    typ match {
+      case FunctionTerm(f, Seq()) => encodeDollarName(f)
+      case FunctionTerm(f, args) =>
+        val encodedF = encodeDollarName(f)
+        s"$encodedF${args.map(serializeType).mkString("__l__", "_", "__r__")}"
+      case BinaryFormula(FunTyConstructor, left, right) =>
+        s"fun_l__${serializeType(left)}_${serializeType(right)}__r_"
+      case BinaryFormula(SumTyConstructor, left, right) =>
+        s"sum_l__${serializeType(left)}_${serializeType(right)}__r_"
+      case BinaryFormula(ProductTyConstructor, left, right) =>
+        s"prod_l__${serializeType(left)}_${serializeType(right)}__r_"
+      case _ => throw new IllegalArgumentException()
+    }
+
+  }
+
   protected[embeddings] final def splitInput(input: Seq[AnnotatedFormula]): (AnnotatedFormula, Seq[AnnotatedFormula]) = {
     val (logicSpecifications, remainingFormulas) = input.partition(_.role == "logic")
     if (logicSpecifications.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")

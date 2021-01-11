@@ -27,6 +27,12 @@ object ModalEmbedding {
 
     private final val state = FlexMap.apply()
 
+    private final val POLYMORPHISM = state.createKeyWithDefault[Nothing, Boolean](default = false)
+
+    private final val EMBEDDING_SYNTACTICAL = false
+    private final val EMBEDDING_SEMANTICAL = true
+    private final val EMBEDDINGTYPE = state.createKeyWithDefault[Nothing, Boolean](default = EMBEDDING_SEMANTICAL)
+
     private final val RIGIDITY_RIGID = true
     private final val RIGIDITY_FLEXIBLE = false
     private final val RIGIDITY = state.createKey[String, Boolean]()
@@ -46,7 +52,7 @@ object ModalEmbedding {
 
     def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[EmbeddingOption]): Seq[AnnotatedFormula] = {
       val (spec, remainingFormulas) = splitInput(problem)
-      createState(spec)
+      createState(spec, embeddingOptions)
       val (typeFormulas, nonTypeFormulas) = remainingFormulas.partition(_.role == "type")
       val convertedTypeFormulas = typeFormulas.map(convertTypeFormula)
       val convertedOtherFormulas = nonTypeFormulas.map(convertAnnotatedFormula)
@@ -68,6 +74,18 @@ object ModalEmbedding {
       }
     }
 
+    private def mkLambda(variable: THF.TypedVariable, body: THF.Formula): THF.Formula = {
+      THF.QuantifiedFormula(THF.^, Seq(variable), body)
+    }
+
+    private def mkSingleQuantified(quantifier: THF.Quantifier)(variable: THF.TypedVariable, acc: THF.Formula): THF.Formula = {
+      val convertedVariable: THF.TypedVariable = (variable._1, convertType(variable._2))
+      val convertedQuantifier: THF.Formula =
+        if (state(POLYMORPHISM)()) THF.BinaryFormula(THF.App, convertQuantifier(quantifier, variable._2, convertedVariable._2), convertedVariable._2)
+        else convertQuantifier(quantifier, variable._2, convertedVariable._2)
+      THF.BinaryFormula(THF.App, convertedQuantifier, mkLambda(convertedVariable, acc))
+    }
+
     private def convertFormula(formula: TPTP.THF.Formula): TPTP.THF.Formula = {
       import TPTP.THF.App
       formula match {
@@ -78,12 +96,14 @@ object ModalEmbedding {
           val convertedArgs = args.map(convertFormula)
           THF.FunctionTerm(f, convertedArgs)
 
-        case THF.QuantifiedFormula(quantifier, variableList, body) => formula
+        case THF.QuantifiedFormula(quantifier, variableList, body) =>
+          val convertedBody = convertFormula(body)
+          variableList.foldRight(convertedBody)(mkSingleQuantified(quantifier))
 
         case THF.Variable(_) => formula
 
         case THF.UnaryFormula(connective, body) =>
-          val convertedConnective: TPTP.THF.Formula = THF.FunctionTerm(convertConnective(connective), Seq.empty)
+          val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
           val convertedBody: TPTP.THF.Formula = convertFormula(body)
           THF.BinaryFormula(App, convertedConnective, convertedBody)
 
@@ -100,14 +120,12 @@ object ModalEmbedding {
           }
 
         case THF.BinaryFormula(connective, left, right) =>
-          val convertedConnective: TPTP.THF.Formula = THF.FunctionTerm(convertConnective(connective), Seq.empty)
+          val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           THF.BinaryFormula(App, convertedConnective, THF.BinaryFormula(App, convertedLeft, convertedRight))
 
-        case THF.ConnectiveTerm(conn) =>
-          val convertedConnective: String = convertConnective(conn)
-          THF.FunctionTerm(convertedConnective, Seq.empty)
+        case THF.ConnectiveTerm(conn) => convertConnective(conn)
 
         case THF.Tuple(elements) =>
           val convertedElements: Seq[TPTP.THF.Formula] = elements.map(convertFormula)
@@ -119,14 +137,18 @@ object ModalEmbedding {
           val convertedEls: TPTP.THF.Formula = convertFormula(els)
           THF.ConditionalTerm(convertedCondition, convertedThn, convertedEls)
 
-        case THF.LetTerm(typing, binding, body) => ???
+        case THF.LetTerm(typing, binding, body) => // This will probably change as the parse tree of LetTerms will still change.
+          val convertedTyping: Map[String, TPTP.THF.Type] = typing.map(a => (a._1, convertType(a._2)))
+          val convertedBinding: Seq[(TPTP.THF.Formula, TPTP.THF.Formula)]  = binding.map(a => (convertFormula(a._1), convertFormula(a._2)))
+          val convertedBody = convertFormula(body)
+          THF.LetTerm(convertedTyping, convertedBinding, convertedBody)
         case THF.DistinctObject(_) => formula
         case THF.NumberTerm(_) => formula
       }
     }
 
-    private def convertConnective(connective: TPTP.THF.Connective): String = {
-      connective match {
+    private def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
+      val name = connective match {
         case THF.~ => "mnot"
         case THF.!! => "mforall"
         case THF.?? => "mexists"
@@ -150,6 +172,56 @@ object ModalEmbedding {
         //      case THF.ProductTyConstructor => ???
         //      case THF.SumTyConstructor => ???
       }
+      THF.FunctionTerm(name, Seq.empty)
+    }
+
+    private def convertQuantifier(quantifier: TPTP.THF.Quantifier, typ: TPTP.THF.Type, convertedType: TPTP.THF.Type): THF.Formula = {
+      val name = quantifier match {
+        case THF.! =>
+          try {
+            state(DOMAIN)(typ.pretty) match {
+              case DOMAIN_CONSTANT =>
+                if (state(POLYMORPHISM)()) {
+                  "mforall_const"
+                } else {
+                  s"mforall_const_${serializeType(convertedType)}"
+                }
+              case _ => // all three other cases
+                if (state(POLYMORPHISM)()) {
+                  "mforall_vary"
+                } else {
+                  s"mforall_vary_${serializeType(convertedType)}"
+                }
+            }
+          } catch {
+            case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
+          }
+
+        case THF.? =>
+          try {
+            state(DOMAIN)(typ.pretty) match {
+              case DOMAIN_CONSTANT =>
+                if (state(POLYMORPHISM)()) {
+                  "mexists_const"
+                } else {
+                  s"mexists_const_${serializeType(convertedType)}"
+                }
+              case _ => // all three other cases
+                if (state(POLYMORPHISM)()) {
+                  "mexists_vary"
+                } else {
+                  s"mexists_vary_${serializeType(convertedType)}"
+                }
+            }
+          } catch {
+            case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
+          }
+        case THF.^ => "mlambda"
+        case THF.@+ => "mchoice"
+        case THF.@- => "mdescription"
+        case _ => throw new EmbeddingException(s"Unexpected type quantifier used as term quantifier: '${quantifier.pretty}'")
+      }
+      THF.FunctionTerm(name, Seq.empty)
     }
 
     private[this] def mbox: THF.Formula = THF.FunctionTerm("mbox", Seq.empty)
@@ -176,7 +248,7 @@ object ModalEmbedding {
     private def convertType(typ: TPTP.THF.Type): TPTP.THF.Type = {
       typ match {
         case THF.FunctionTerm(f, args) =>
-          val convertedArgs = args // TODO:  args.map(convertType) ??? What to do with those?
+          val convertedArgs = args.map(convertType) ///TODO What to do with those?
           if (state(RIGIDITY)(f)) THF.FunctionTerm(f, convertedArgs)
           else THF.BinaryFormula(THF.FunTyConstructor, worldType, THF.FunctionTerm(f, convertedArgs))
 
@@ -206,7 +278,10 @@ object ModalEmbedding {
     // Logic specification parsing
     //////////////////////////////////////////////////////////////////////
 
-    private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
+    private[this] def createState(spec: TPTP.AnnotatedFormula, options: Set[EmbeddingOption]): Unit = {
+      if (options contains EmbeddingOption.POLYMORPHIC) state(POLYMORPHISM) += (() -> true)
+      if (options contains EmbeddingOption.SYNTACTICAL) state(EMBEDDINGTYPE) += (() -> EMBEDDING_SYNTACTICAL)
+
       assert(spec.role == "logic")
       spec.formula match {
         case THF.Logical(THF.BinaryFormula(THF.:=, THF.FunctionTerm("$modal", Seq()),THF.Tuple(spec0))) =>
@@ -281,9 +356,10 @@ object ModalEmbedding {
 
 object Test {
   def main(args: Array[String]): Unit = {
-    val file = io.Source.fromFile("/home/lex/dev/Leo-III/demo/modal/ex5_multimodal_wisemen.p")
+//    val file = io.Source.fromFile("/home/lex/dev/Leo-III/demo/modal/ex5_multimodal_wisemen.p")
+    val file = io.Source.fromFile("/home/lex/dev/Leo-III/demo/modal/ex1_semantics_ho.p")
     val input = TPTPParser.problem(file)
-    val transformed = ModalEmbedding.apply(input.formulas)
+    val transformed = ModalEmbedding.apply(input.formulas, Set(ModalEmbedding.EmbeddingOption.MONOMORPHIC))
     transformed.foreach(t => println(t.pretty))
   }
 }
