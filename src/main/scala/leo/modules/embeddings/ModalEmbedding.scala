@@ -4,8 +4,6 @@ package embeddings
 
 import datastructures.{FlexMap, TPTP}
 import TPTP.{AnnotatedFormula, THF}
-import leo.modules.input.TPTPParser
-
 
 object ModalEmbedding {
   type EmbeddingOption = EmbeddingOption.EmbeddingOption

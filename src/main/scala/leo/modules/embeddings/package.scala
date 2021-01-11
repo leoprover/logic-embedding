@@ -2,7 +2,7 @@ package leo
 package modules
 
 import java.util.logging.Logger
-import datastructures.TPTP
+import leo.datastructures.TPTP
 import TPTP.AnnotatedFormula
 
 
@@ -57,7 +57,7 @@ package object embeddings {
   }
 
   protected[embeddings] def parseTupleRHS(tupleElements: Seq[TPTP.THF.Formula]): (Option[String], Map[String, String]) = {
-    import TPTP.THF.{FunctionTerm, :=, BinaryFormula}
+    import TPTP.THF.{FunctionTerm, BinaryFormula}
     var default: Option[String] = None
     var mapping: Map[String, String] = Map.empty
 
@@ -66,8 +66,8 @@ package object embeddings {
         if (default.isEmpty) {
           default = Some(defaultValue)
         } else throw new EmbeddingException(s"More than one default value for the semantics specification was given. This is considered an error.")
-      case BinaryFormula(:=, FunctionTerm(name, Seq()), FunctionTerm(value, Seq())) =>
-        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name}' given. This is considered an error.")
+      case BinaryFormula(TPTP.THF.:=, FunctionTerm(name, Seq()), FunctionTerm(value, Seq())) =>
+        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '$name' given. This is considered an error.")
         else {
           mapping = mapping + (name -> value)
         }
@@ -86,19 +86,19 @@ package object embeddings {
   }
 
   protected[embeddings] def parseTupleListRHS(tupleElements: Seq[TPTP.THF.Formula]): (Seq[String], Map[String, Seq[String]]) = {
-    import TPTP.THF.{FunctionTerm, :=, Tuple, BinaryFormula}
+    import TPTP.THF.{FunctionTerm, Tuple, BinaryFormula}
     var default: Seq[String] = Seq.empty
     var mapping: Map[String, Seq[String]] = Map.empty
 
     tupleElements foreach {
       case FunctionTerm(defaultValue, Seq()) =>  default = default :+ defaultValue
-      case BinaryFormula(:=, FunctionTerm(name, Seq()), FunctionTerm(value, Seq())) =>
-        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name}' given. This is considered an error.")
+      case BinaryFormula(TPTP.THF.:=, FunctionTerm(name, Seq()), FunctionTerm(value, Seq())) =>
+        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '$name' given. This is considered an error.")
         else {
           mapping = mapping + (name -> Seq(value))
         }
-      case bf@BinaryFormula(:=, FunctionTerm(name, Seq()), Tuple(entries)) =>
-        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name}' given. This is considered an error.")
+      case bf@BinaryFormula(TPTP.THF.:=, FunctionTerm(name, Seq()), Tuple(entries)) =>
+        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '$name' given. This is considered an error.")
         else {
           val (convertedEntries, convertedEntriesMap) = parseTupleListRHS(entries)
           if (convertedEntriesMap.isEmpty) {
