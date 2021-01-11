@@ -10,10 +10,10 @@ lazy val logicEmbedding = (project in file("."))
     version := "0.1",
     organization := "org.leo",
     scalaVersion := "2.13.4",
-
-    // mainClass in (Compile, run) := Some("leo.Main"),
-    // mainClass in assembly := Some("leo.Main"),
-
+    scalacOptions ++= Seq(
+      "-deprecation",
+      "-feature",
+    ),
     licenses += "BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause"),
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.2" % "test"
   ).dependsOn(parserLib)
