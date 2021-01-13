@@ -105,6 +105,13 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
           val convertedBody: TPTP.THF.Formula = convertFormula(body)
           THF.BinaryFormula(App, convertedConnective, convertedBody)
 
+        // polymorphic box and diamond cases
+        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$box_P", Seq()), tyArg), index) =>
+          mboxIndexed(index, tyArg)
+        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$dia_P", Seq()), tyArg), index) =>
+          mdiaIndexed(index, tyArg)
+
+        // Non-poly modal operators or standard application
         case THF.BinaryFormula(App, left, right) =>
           left match {
             case THF.FunctionTerm("$box_int", Seq()) =>
