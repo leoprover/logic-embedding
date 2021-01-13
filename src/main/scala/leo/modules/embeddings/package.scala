@@ -13,6 +13,11 @@ package object embeddings {
     def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[OptionType]): Seq[AnnotatedFormula]
   }
 
+  object ModalEmbeddingOption extends Enumeration {
+    type ModalEmbeddingOption = Value
+    final val MONOMORPHIC, POLYMORPHIC, SEMANTICAL, SYNTACTICAL = Value
+  }
+
 
   final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
   final def serializeType(typ: TPTP.THF.Type): String = {

@@ -2,10 +2,11 @@ package leo
 package modules
 package embeddings
 
-import leo.modules.input.TPTPParser
 import org.scalatest.funsuite.AnyFunSuite
-
 import java.io.File
+
+import leo.modules.input.TPTPParser
+import ModalEmbeddingOption._
 
 class ModalEmbeddingTest  extends AnyFunSuite {
   private val testFiles: Seq[File] = new File(getClass.getResource("/").getPath).listFiles(_.isFile).toSeq
@@ -19,7 +20,7 @@ class ModalEmbeddingTest  extends AnyFunSuite {
       println(s"Embedding ${filename.getName} ...")
       val file = io.Source.fromFile(filename.getAbsolutePath)
       val input = TPTPParser.problem(file)
-      val transformed = ModalEmbedding.apply(input.formulas, Set(ModalEmbedding.EmbeddingOption.MONOMORPHIC))
+      val transformed = ModalEmbedding.apply(input.formulas, Set(MONOMORPHIC))
       transformed.foreach(t => println(t.pretty))
     }
   }
@@ -33,7 +34,7 @@ class ModalEmbeddingTest  extends AnyFunSuite {
       println(s"Embedding ${filename.getName} ...")
       val file = io.Source.fromFile(filename.getAbsolutePath)
       val input = TPTPParser.problem(file)
-      val transformed = ModalEmbedding.apply(input.formulas, Set(ModalEmbedding.EmbeddingOption.POLYMORPHIC))
+      val transformed = ModalEmbedding.apply(input.formulas, Set(POLYMORPHIC))
       transformed.foreach(t => println(t.pretty))
     }
   }

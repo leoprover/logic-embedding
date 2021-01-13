@@ -4,34 +4,23 @@ package embeddings
 
 import datastructures.{FlexMap, TPTP}
 import TPTP.{AnnotatedFormula, THF}
+import ModalEmbeddingOption._
 
-object ModalEmbedding {
-  type EmbeddingOption = EmbeddingOption.EmbeddingOption
-  final object EmbeddingOption extends Enumeration {
-    type EmbeddingOption = Value
-    final val MONOMORPHIC, POLYMORPHIC, SEMANTICAL, SYNTACTICAL = Value
-  }
+object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
 
   final def apply(problem: Seq[AnnotatedFormula],
-                  embeddingOptions: Set[EmbeddingOption] = Set.empty): Seq[AnnotatedFormula] =
-    new ModalEmbeddingImpl().apply(problem, embeddingOptions)
+                  embeddingOptions: Set[ModalEmbeddingOption] = Set.empty): Seq[AnnotatedFormula] =
+    new ModalEmbeddingImpl(problem, embeddingOptions).apply()
 
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class ModalEmbeddingImpl extends Embedding[EmbeddingOption] {
+  private[this] final class ModalEmbeddingImpl(problem: Seq[AnnotatedFormula], embeddingOptions: Set[ModalEmbeddingOption]) {
 
     ///////////////////////////////////////////////////////////////////
     private final val state = FlexMap.apply()
-
-    // Embedding options
-    private final val POLYMORPHISM = state.createKeyWithDefault[Nothing, Boolean](default = false)
-
-    private final val EMBEDDING_SYNTACTICAL = false
-    private final val EMBEDDING_SEMANTICAL = true
-    private final val EMBEDDINGTYPE = state.createKeyWithDefault[Nothing, Boolean](default = EMBEDDING_SEMANTICAL)
 
     // Semantics dimensions
     private final val RIGIDITY_RIGID = true
@@ -51,10 +40,17 @@ object ModalEmbedding {
 
     private final val MODALS = state.createKey[String, Seq[String]]()
     ////////////////////////////////////////////////////////////////////
+    // Embedding options
+    private val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
 
-    def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[EmbeddingOption]): Seq[AnnotatedFormula] = {
+    private final val EMBEDDING_SYNTACTICAL = true
+    private final val EMBEDDING_SEMANTICAL = false
+    private val embeddingType: Boolean = embeddingOptions.contains(SYNTACTICAL) // default semantical
+    ////////////////////////////////////////////////////////////////////
+
+    def apply(): Seq[AnnotatedFormula] = {
       val (spec, remainingFormulas) = splitInput(problem)
-      createState(spec, embeddingOptions)
+      createState(spec)
       val (typeFormulas, nonTypeFormulas) = remainingFormulas.partition(_.role == "type")
       val convertedTypeFormulas = typeFormulas.map(convertTypeFormula)
       val convertedOtherFormulas = nonTypeFormulas.map(convertAnnotatedFormula)
@@ -83,7 +79,7 @@ object ModalEmbedding {
     private def mkSingleQuantified(quantifier: THF.Quantifier)(variable: THF.TypedVariable, acc: THF.Formula): THF.Formula = {
       val convertedVariable: THF.TypedVariable = (variable._1, convertType(variable._2))
       val convertedQuantifier: THF.Formula =
-        if (state(POLYMORPHISM)()) THF.BinaryFormula(THF.App, convertQuantifier(quantifier, variable._2, convertedVariable._2), convertedVariable._2)
+        if (polymorphic) THF.BinaryFormula(THF.App, convertQuantifier(quantifier, variable._2, convertedVariable._2), convertedVariable._2)
         else convertQuantifier(quantifier, variable._2, convertedVariable._2)
       THF.BinaryFormula(THF.App, convertedQuantifier, mkLambda(convertedVariable, acc))
     }
@@ -113,22 +109,22 @@ object ModalEmbedding {
           left match {
             case THF.FunctionTerm("$box_int", Seq()) =>
               right match {
-                case THF.NumberTerm(TPTP.Integer(value)) => mboxIndexed(value.toString, "$int")
+                case nt@THF.NumberTerm(TPTP.Integer(_)) => mboxIndexed(nt, THF.FunctionTerm("$int", Seq.empty))
                 case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
               }
             case THF.FunctionTerm("$dia_int", Seq()) =>
               right match {
-                case THF.NumberTerm(TPTP.Integer(value)) => mdiaIndexed(value.toString, "$int")
+                case nt@THF.NumberTerm(TPTP.Integer(_)) => mdiaIndexed(nt, THF.FunctionTerm("$int", Seq.empty))
                 case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
               }
             case THF.FunctionTerm("$box_i", Seq()) =>
               right match {
-                case THF.FunctionTerm(f, Seq()) => mboxIndexed(f, "$i")
+                case ft@THF.FunctionTerm(_, Seq()) => mboxIndexed(ft, THF.FunctionTerm("$i", Seq.empty))
                 case _ => throw new EmbeddingException(s"Index of $$box_i was not a symbol/functor, but '${right.pretty}'.")
               }
             case THF.FunctionTerm("$dia_i", Seq()) =>
               right match {
-                case THF.FunctionTerm(f, Seq()) => mdiaIndexed(f, "$i")
+                case ft@THF.FunctionTerm(_, Seq()) => mdiaIndexed(ft, THF.FunctionTerm("$i", Seq.empty))
                 case _ => throw new EmbeddingException(s"Index of $$dia_i was not a symbol/functor, but '${right.pretty}'.")
               }
             case _ =>
@@ -198,9 +194,9 @@ object ModalEmbedding {
         case THF.! =>
           try {
             state(DOMAIN)(typ.pretty) match {
-              case DOMAIN_CONSTANT => if (state(POLYMORPHISM)()) "mforall_const" else s"mforall_const_${serializeType(convertedType)}"
+              case DOMAIN_CONSTANT => if (polymorphic) "mforall_const" else s"mforall_const_${serializeType(convertedType)}"
               case _ => // all three other cases
-                if (state(POLYMORPHISM)()) "mforall_vary" else s"mforall_vary_${serializeType(convertedType)}"
+                if (polymorphic) "mforall_vary" else s"mforall_vary_${serializeType(convertedType)}"
             }
           } catch {
             case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
@@ -209,9 +205,9 @@ object ModalEmbedding {
         case THF.? =>
           try {
             state(DOMAIN)(typ.pretty) match {
-              case DOMAIN_CONSTANT => if (state(POLYMORPHISM)()) "mexists_const" else s"mexists_const_${serializeType(convertedType)}"
+              case DOMAIN_CONSTANT => if (polymorphic) "mexists_const" else s"mexists_const_${serializeType(convertedType)}"
               case _ => // all three other cases
-                if (state(POLYMORPHISM)()) "mexists_vary" else s"mexists_vary_${serializeType(convertedType)}"
+                if (polymorphic) "mexists_vary" else s"mexists_vary_${serializeType(convertedType)}"
             }
           } catch {
             case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
@@ -225,21 +221,19 @@ object ModalEmbedding {
     }
 
     private[this] def mbox: THF.Formula = THF.FunctionTerm("mbox", Seq.empty)
-    private[this] def mboxIndexed(name: String, typ: String): THF.Formula = {
-      // TODO: Forbid using different kinds of indexes in the same problem?
-      // Otherwise we have to define different types for the modal operators in TH0 export; and I don't like to implement this :-)
-      multiModal(name, typ)
-      THF.BinaryFormula(THF.App, mbox, THF.FunctionTerm(name, Seq.empty))
+    private[this] def mboxIndexed(index: THF.Formula, typ: THF.Type): THF.Formula = {
+      // TODO: Switch $int -> otherType here
+      multiModal(index, typ)
+      if (polymorphic) THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, mbox, typ), index)
+      else THF.BinaryFormula(THF.App, THF.FunctionTerm(s"mbox_${serializeType(typ)}", Seq.empty), index)
     }
     private[this] def mdia: THF.Formula = THF.FunctionTerm("mdia", Seq.empty)
-    private[this] def mdiaIndexed(name: String, typ: String): THF.Formula = {
-      multiModal(name, typ)
-      THF.BinaryFormula(THF.App, mdia, THF.FunctionTerm(name, Seq.empty))
+    private[this] def mdiaIndexed(index: THF.Formula, typ: THF.Type): THF.Formula = {
+      // TODO: Switch $int -> otherType here
+      multiModal(index, typ)
+      if (polymorphic) THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, mdia, typ), index)
+      else THF.BinaryFormula(THF.App, THF.FunctionTerm(s"mdia_${serializeType(typ)}", Seq.empty), index)
     }
-//    private[this] def mbox_i: THF.Formula = THF.FunctionTerm("mbox_i", Seq.empty)
-//    private[this] def mdia_i: THF.Formula = THF.FunctionTerm("mdia_i", Seq.empty)
-//    private[this] def mbox_int: THF.Formula = THF.FunctionTerm("mbox_int", Seq.empty)
-//    private[this] def mdia_int: THF.Formula = THF.FunctionTerm("mdia_int", Seq.empty)
 
     private[this] def mglobal: THF.Formula = THF.FunctionTerm("mglobal", Seq.empty)
     private[this] def mlocal: THF.Formula =  THF.FunctionTerm("mlocal", Seq.empty)
@@ -271,10 +265,6 @@ object ModalEmbedding {
           val convertedElements = elements.map(convertType)
           THF.Tuple(convertedElements)
 
-        // TODO: Could support polymorphic types
-        // case THF.QuantifiedFormula(quantifier, variableList, body) =>
-        // case THF.Variable(name) =>
-
         case _ => throw new EmbeddingException(s"Unexpected type expression in type: '${typ.pretty}'")
       }
     }
@@ -283,16 +273,15 @@ object ModalEmbedding {
     // Local embedding state
     ///////////////////////////////////////////////////
     import collection.mutable
-    private[this] val modalOperators: mutable.Map[String, Set[String]] = mutable.Map.empty
+    private[this] val modalOperators: mutable.Map[THF.Type, Set[THF.Formula]] = mutable.Map.empty
     private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
-    private[this] def multiModal(identifier: String, typ: String): Unit = {
+    private[this] def multiModal(index: THF.Formula, typ: THF.Type): Unit = {
       val set = modalOperators.getOrElse(typ, Set.empty)
-      modalOperators += (typ -> set + identifier)
+      modalOperators += (typ -> (set + index))
     }
 
     private def generateMetaFormulas(): Seq[TPTP.AnnotatedFormula] = {
       import scala.collection.mutable
-      import modules.input.TPTPParser.annotatedTHF
 
       val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
 
@@ -301,15 +290,12 @@ object ModalEmbedding {
 
       // Then: Introduce mrel (as relation or as collection of relations)
       if (isMultiModal) {
-        modalOperators foreach { case (ty, ops) =>
-          result.append(indexedAccessibilityRelationTPTPDef(ty))
-          if (ty == "$int") { // handle ints specially: since they do not need to have type specification
-                              // (they are part of every arithmetics signature)
-                              // convert to special new type
-            // TODO
+        if (polymorphic) result.append(polyIndexedAccessibilityRelationTPTPDef())
+        else {
+          modalOperators foreach { case (ty, _) =>
+            result.append(indexedAccessibilityRelationTPTPDef(ty))
           }
         }
-
       } else result.append(simpleAccessibilityRelationTPTPDef())
 
       // Then: Define mglobal/mlocal
@@ -330,8 +316,14 @@ object ModalEmbedding {
       // Then: Define connectives
       result.appendAll(connectivesTPTPDef())
       // Then: Define modal operators
-      if (isMultiModal) result.appendAll(indexedModalOperatorsTPTPDef("sometype")) // TODO
-      else result.appendAll(simpleModalOperatorsTPTPDef())
+      if (isMultiModal) {
+        if (polymorphic) result.appendAll(polyIndexedModalOperatorsTPTPDef())
+        else {
+          modalOperators foreach { case (ty, _) =>
+            result.appendAll(indexedModalOperatorsTPTPDef(ty))
+          }
+        }
+      } else result.appendAll(simpleModalOperatorsTPTPDef())
 
       // Then: Give mrel properties (sem/syn)
       // write used properties and assign (if semantical)
@@ -352,12 +344,17 @@ object ModalEmbedding {
 
     private[this] def simpleAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF("thf(mrel_type, type, mrel: mworld > mworld > $$o).")
+      annotatedTHF("thf(mrel_type, type, mrel: mworld > mworld > $o).")
     }
 
-    private[this] def indexedAccessibilityRelationTPTPDef(typ: String): TPTP.AnnotatedFormula = {
+    private[this] def indexedAccessibilityRelationTPTPDef(typ: THF.Type): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF(s"thf(mrel_type, type, mrel: $typ > mworld > mworld > $$o).")
+      annotatedTHF(s"thf(mrel_${serializeType(typ)}_type, type, mrel_${serializeType(typ)}: ${typ.pretty} > mworld > mworld > $$o).")
+    }
+
+    private[this] def polyIndexedAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
+      import modules.input.TPTPParser.annotatedTHF
+      annotatedTHF("thf(mrel_type, type, mrel: !>[T:$tType]: (T > mworld > mworld > $o)).")
     }
 
     private[this] def mglobalTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
@@ -403,13 +400,23 @@ object ModalEmbedding {
       )
     }
 
-    private[this] def indexedModalOperatorsTPTPDef(typ: String): Seq[TPTP.AnnotatedFormula] = {
+    private[this] def indexedModalOperatorsTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mbox_type, type, mbox: $typ > (mworld>$$o)>mworld>$$o )."),
-        annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [R:$typ, A:mworld>$$o,W:mworld]: ! [V:mworld]: ( (mrel@R@W@V) => (A@V) ))))."),
-        annotatedTHF(s"thf(mdia_type, type, mdia: $typ > (mworld>$$o)>mworld>$$o )."),
-        annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [R:$typ, Phi:mworld>$$o, W:mworld]: ?[V:mworld]: ( (mrel @ R @ W @ V) & (Phi @ V) )))).")
+        annotatedTHF(s"thf(mbox_${serializeType(typ)}_type, type, mbox_${serializeType(typ)}: ${typ.pretty} > (mworld>$$o)>mworld>$$o )."),
+        annotatedTHF(s"thf(mbox_${serializeType(typ)}_def, definition, ( mbox_${serializeType(typ)} = (^ [R:${typ.pretty}, Phi:mworld>$$o,W:mworld]: ! [V:mworld]: ( (mrel_${serializeType(typ)} @ R @ W @ V) => (Phi @ V) ))))."),
+        annotatedTHF(s"thf(mdia_${serializeType(typ)}_type, type, mdia_${serializeType(typ)}: ${typ.pretty} > (mworld>$$o)>mworld>$$o )."),
+        annotatedTHF(s"thf(mdia_${serializeType(typ)}_def, definition, ( mdia_${serializeType(typ)} = (^ [R:${typ.pretty}, Phi:mworld>$$o, W:mworld]: ?[V:mworld]: ( (mrel_${serializeType(typ)} @ R @ W @ V) & (Phi @ V) )))).")
+      )
+    }
+
+    private[this] def polyIndexedModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF("thf(mbox_type, type, mbox: !>[T:$tType]: (T > (mworld>$o)>mworld>$o) )."),
+        annotatedTHF("thf(mbox_def, definition, ( mbox = (^ [T:$tType, R:T, Phi:mworld>$o, W:mworld]: ! [V:mworld]: ( (mrel @ T @ R @ W @ V) => (Phi @ V) ))))."),
+        annotatedTHF("thf(mdia_type, type, mdia: !>[T:$tType]: (T > (mworld>$o)>mworld>$o) )."),
+        annotatedTHF("thf(mdia_def, definition, ( mdia = (^ [T:$tType, R:T, Phi:mworld>$o, W:mworld]: ?[V:mworld]: ( (mrel @ T @ R @ W @ V) & (Phi @ V) )))).")
       )
     }
 
@@ -422,9 +429,9 @@ object ModalEmbedding {
     // Logic specification parsing
     //////////////////////////////////////////////////////////////////////
 
-    private[this] def createState(spec: TPTP.AnnotatedFormula, options: Set[EmbeddingOption]): Unit = {
-      if (options contains EmbeddingOption.POLYMORPHIC) state(POLYMORPHISM) += (() -> true)
-      if (options contains EmbeddingOption.SYNTACTICAL) state(EMBEDDINGTYPE) += (() -> EMBEDDING_SYNTACTICAL)
+    private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
+//      if (options contains EmbeddingOption.POLYMORPHIC) state(POLYMORPHISM) += (() -> true)
+//      if (options contains EmbeddingOption.SYNTACTICAL) state(EMBEDDINGTYPE) += (() -> EMBEDDING_SYNTACTICAL)
 
       assert(spec.role == "logic")
       spec.formula match {
