@@ -78,6 +78,7 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
 
     private def mkSingleQuantified(quantifier: THF.Quantifier)(variable: THF.TypedVariable, acc: THF.Formula): THF.Formula = {
       val convertedVariable: THF.TypedVariable = (variable._1, convertType(variable._2))
+      quantifierType(convertedVariable._2)
       val convertedQuantifier: THF.Formula =
         if (polymorphic) THF.BinaryFormula(THF.App, convertQuantifier(quantifier, variable._2, convertedVariable._2), convertedVariable._2)
         else convertQuantifier(quantifier, variable._2, convertedVariable._2)
@@ -201,9 +202,9 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
         case THF.! =>
           try {
             state(DOMAIN)(typ.pretty) match {
-              case DOMAIN_CONSTANT => if (polymorphic) "mforall_const" else s"mforall_const_${serializeType(convertedType)}"
+              case DOMAIN_CONSTANT => if (polymorphic) "mforall_const" else s"mforall_${serializeType(convertedType)}"
               case _ => // all three other cases
-                if (polymorphic) "mforall_vary" else s"mforall_vary_${serializeType(convertedType)}"
+                if (polymorphic) "mforall_vary" else s"mforall_${serializeType(convertedType)}"
             }
           } catch {
             case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
@@ -212,9 +213,9 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
         case THF.? =>
           try {
             state(DOMAIN)(typ.pretty) match {
-              case DOMAIN_CONSTANT => if (polymorphic) "mexists_const" else s"mexists_const_${serializeType(convertedType)}"
+              case DOMAIN_CONSTANT => if (polymorphic) "mexists_const" else s"mexists_${serializeType(convertedType)}"
               case _ => // all three other cases
-                if (polymorphic) "mexists_vary" else s"mexists_vary_${serializeType(convertedType)}"
+                if (polymorphic) "mexists_vary" else s"mexists_${serializeType(convertedType)}"
             }
           } catch {
             case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
@@ -287,6 +288,11 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       modalOperators += (typ -> (set + index))
     }
 
+    private[this] val quantifierTypes: mutable.Set[THF.Type] = mutable.Set.empty
+    private[this] def quantifierType(typ: THF.Type): Unit = {
+      quantifierTypes += typ
+    }
+
     private def generateMetaFormulas(): Seq[TPTP.AnnotatedFormula] = {
       import scala.collection.mutable
 
@@ -336,12 +342,24 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       // write used properties and assign (if semantical)
       // or write syntactical axioms (if syntactical)
 
-      // Then: Define quantifiers (TH0/TH1)
+      // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary)
 
-      // Then: Define quantifier restrictions (if cumul/decr)
+      // Then: Define quantifiers (TH0/TH1)
+      if (polymorphic) {
+        if (quantifierTypes.nonEmpty) result.appendAll(polyIndexedQuantifierTPTPDef()) // TODO: Vary only if atleast one cary/cumul/decr
+      } else {
+        quantifierTypes foreach { ty =>
+          if (state(DOMAIN)(ty.pretty) == DOMAIN_CONSTANT) result.appendAll(indexedConstQuantifierTPTPDef(ty))
+          else result.appendAll(indexedConstQuantifierTPTPDef(ty))
+        }
+      }
 
       // Return all
       result.toSeq
+    }
+
+    private[this] def worldType: TPTP.THF.Type = {
+      THF.FunctionTerm("mworld", Seq.empty)
     }
 
     private[this] def worldTypeTPTPDef(): TPTP.AnnotatedFormula = {
@@ -427,9 +445,41 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       )
     }
 
-    private[this] def worldType: TPTP.THF.Type = {
-      THF.FunctionTerm("mworld", Seq.empty)
+
+    private[this] def indexedConstQuantifierTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF(s"thf(mforall_${serializeType(typ)}_type, type, mforall_${serializeType(typ)}: (${typ.pretty} > mworld > $$o) > mworld > $$o)."),
+        annotatedTHF(s"thf(mforall_${serializeType(typ)}_def, definition, mforall_${serializeType(typ)} = ( ^ [A:${typ.pretty}>mworld>$$o, W:mworld]: ! [X:${typ.pretty}]: (A @ X @ W)))."),
+        annotatedTHF(s"thf(mexists_${serializeType(typ)}_type, type, mexists_${serializeType(typ)}: (${typ.pretty} > mworld > $$o) > mworld > $$o)."),
+        annotatedTHF(s"thf(mexists_${serializeType(typ)}_def, definition, mexists_${serializeType(typ)} = ( ^ [A:${typ.pretty}>mworld>$$o, W:mworld]: ? [X:${typ.pretty}]: (A @ X @ W))).")
+      )
     }
+    private[this] def indexedVaryQuantifierTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF(s"thf(mforall_${serializeType(typ)}_type, type, mforall_${serializeType(typ)}: (${typ.pretty} > mworld > $$o) > mworld > $$o)."),
+        annotatedTHF(s"thf(mforall_${serializeType(typ)}_def, definition, mforall_${serializeType(typ)} = ( ^ [A:${typ.pretty}>mworld>$$o, W:mworld]: ! [X:${typ.pretty}]: ((eiw_${serializeType(typ)} @ X @ W) => (A @ X @ W))))."),
+        annotatedTHF(s"thf(mexists_${serializeType(typ)}_type, type, mexists_${serializeType(typ)}: (${typ.pretty} > mworld > $$o) > mworld > $$o)."),
+        annotatedTHF(s"thf(mexists_${serializeType(typ)}_def, definition, mexists_${serializeType(typ)} = ( ^ [A:${typ.pretty}>mworld>$$o, W:mworld]: ? [X:${typ.pretty}]: ((eiw_${serializeType(typ)} @ X @ W) & (A @ X @ W)))).")
+      )
+    }
+
+    private[this] def polyIndexedQuantifierTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF("thf(mforall_const_type, type, mforall_const: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
+        annotatedTHF("thf(mforall_const_def, definition, mforall_const = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ! [X:T]: (A @ X @ W)))."),
+        annotatedTHF("thf(mexists_const_type, type, mexists_const: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
+        annotatedTHF("thf(mexists_const_def, definition, mexists_const = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ? [X:T]: (A @ X @ W)))."),
+        annotatedTHF("thf(mforall_vary_type, type, mforall_vary: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
+        annotatedTHF("thf(mforall_vary_def, definition, mforall_vary = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ! [X:T]: ((eiw @ T @ X @ W) => (A @ X @ W))))."),
+        annotatedTHF("thf(mexists_vary_type, type, mexists_vary: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
+        annotatedTHF("thf(mexists_vary_def, definition, mexists_vary = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ? [X:T]: ((eiw @ T @ X @ W) & (A @ X @ W)))).")
+      )
+    }
+//    annotatedTHF("thf(eiw_type, type, eiw: !>[T:$tType]: (T > mworld > $o))."),
+
 
 
     //////////////////////////////////////////////////////////////////////
@@ -437,9 +487,6 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
     //////////////////////////////////////////////////////////////////////
 
     private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
-//      if (options contains EmbeddingOption.POLYMORPHIC) state(POLYMORPHISM) += (() -> true)
-//      if (options contains EmbeddingOption.SYNTACTICAL) state(EMBEDDINGTYPE) += (() -> EMBEDDING_SYNTACTICAL)
-
       assert(spec.role == "logic")
       spec.formula match {
         case THF.Logical(THF.BinaryFormula(THF.:=, THF.FunctionTerm("$modal", Seq()),THF.Tuple(spec0))) =>
