@@ -8,7 +8,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import java.io.File
 
 class ModalEmbeddingTest  extends AnyFunSuite {
-  private val testFiles: Seq[File] = new File(getClass.getResource("/").getPath).listFiles(_.isFile)
+  private val testFiles: Seq[File] = new File(getClass.getResource("/").getPath).listFiles(_.isFile).toSeq
 
   println("###################################")
   println(s"Monomorphic embedding tests ...")

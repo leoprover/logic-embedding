@@ -113,16 +113,24 @@ object ModalEmbedding {
           left match {
             case THF.FunctionTerm("$box_int", Seq()) =>
               right match {
-                case THF.NumberTerm(TPTP.Integer(value)) => mboxIndexed(value.toString)
+                case THF.NumberTerm(TPTP.Integer(value)) => mboxIndexed(value.toString, "$int")
                 case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
               }
             case THF.FunctionTerm("$dia_int", Seq()) =>
               right match {
-                case THF.NumberTerm(TPTP.Integer(value)) => mdiaIndexed(value.toString)
+                case THF.NumberTerm(TPTP.Integer(value)) => mdiaIndexed(value.toString, "$int")
                 case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
               }
-            case THF.FunctionTerm("$box_i", Seq()) => ???
-            case THF.FunctionTerm("$dia_i", Seq()) => ???
+            case THF.FunctionTerm("$box_i", Seq()) =>
+              right match {
+                case THF.FunctionTerm(f, Seq()) => mboxIndexed(f, "$i")
+                case _ => throw new EmbeddingException(s"Index of $$box_i was not a symbol/functor, but '${right.pretty}'.")
+              }
+            case THF.FunctionTerm("$dia_i", Seq()) =>
+              right match {
+                case THF.FunctionTerm(f, Seq()) => mdiaIndexed(f, "$i")
+                case _ => throw new EmbeddingException(s"Index of $$dia_i was not a symbol/functor, but '${right.pretty}'.")
+              }
             case _ =>
               val convertedLeft: TPTP.THF.Formula = convertFormula(left)
               val convertedRight: TPTP.THF.Formula = convertFormula(right)
@@ -217,19 +225,21 @@ object ModalEmbedding {
     }
 
     private[this] def mbox: THF.Formula = THF.FunctionTerm("mbox", Seq.empty)
-    private[this] def mboxIndexed(name: String): THF.Formula = {
-      multiModal(name)
-      THF.BinaryFormula(THF.App, mbox, THF.FunctionTerm(name, Seq.empty)) // TODO
+    private[this] def mboxIndexed(name: String, typ: String): THF.Formula = {
+      // TODO: Forbid using different kinds of indexes in the same problem?
+      // Otherwise we have to define different types for the modal operators in TH0 export; and I don't like to implement this :-)
+      multiModal(name, typ)
+      THF.BinaryFormula(THF.App, mbox, THF.FunctionTerm(name, Seq.empty))
     }
     private[this] def mdia: THF.Formula = THF.FunctionTerm("mdia", Seq.empty)
-    private[this] def mdiaIndexed(name: String): THF.Formula = {
-      multiModal(name)
-      THF.BinaryFormula(THF.App, mdia, THF.FunctionTerm(name, Seq.empty)) // TODO
+    private[this] def mdiaIndexed(name: String, typ: String): THF.Formula = {
+      multiModal(name, typ)
+      THF.BinaryFormula(THF.App, mdia, THF.FunctionTerm(name, Seq.empty))
     }
-    private[this] def mbox_i: THF.Formula = THF.FunctionTerm("mbox_i", Seq.empty)
-    private[this] def mdia_i: THF.Formula = THF.FunctionTerm("mdia_i", Seq.empty)
-    private[this] def mbox_int: THF.Formula = THF.FunctionTerm("mbox_int", Seq.empty)
-    private[this] def mdia_int: THF.Formula = THF.FunctionTerm("mdia_int", Seq.empty)
+//    private[this] def mbox_i: THF.Formula = THF.FunctionTerm("mbox_i", Seq.empty)
+//    private[this] def mdia_i: THF.Formula = THF.FunctionTerm("mdia_i", Seq.empty)
+//    private[this] def mbox_int: THF.Formula = THF.FunctionTerm("mbox_int", Seq.empty)
+//    private[this] def mdia_int: THF.Formula = THF.FunctionTerm("mdia_int", Seq.empty)
 
     private[this] def mglobal: THF.Formula = THF.FunctionTerm("mglobal", Seq.empty)
     private[this] def mlocal: THF.Formula =  THF.FunctionTerm("mlocal", Seq.empty)
@@ -269,6 +279,17 @@ object ModalEmbedding {
       }
     }
 
+    ///////////////////////////////////////////////////
+    // Local embedding state
+    ///////////////////////////////////////////////////
+    import collection.mutable
+    private[this] val modalOperators: mutable.Map[String, Set[String]] = mutable.Map.empty
+    private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
+    private[this] def multiModal(identifier: String, typ: String): Unit = {
+      val set = modalOperators.getOrElse(typ, Set.empty)
+      modalOperators += (typ -> set + identifier)
+    }
+
     private def generateMetaFormulas(): Seq[TPTP.AnnotatedFormula] = {
       import scala.collection.mutable
       import modules.input.TPTPParser.annotatedTHF
@@ -279,8 +300,17 @@ object ModalEmbedding {
       result.append(worldTypeTPTPDef())
 
       // Then: Introduce mrel (as relation or as collection of relations)
-      if (isMultiModal) result.append(indexedAccessibilityRelationTPTPDef("sometype")) // TODO
-      else result.append(simpleAccessibilityRelationTPTPDef())
+      if (isMultiModal) {
+        modalOperators foreach { case (ty, ops) =>
+          result.append(indexedAccessibilityRelationTPTPDef(ty))
+          if (ty == "$int") { // handle ints specially: since they do not need to have type specification
+                              // (they are part of every arithmetics signature)
+                              // convert to special new type
+            // TODO
+          }
+        }
+
+      } else result.append(simpleAccessibilityRelationTPTPDef())
 
       // Then: Define mglobal/mlocal
       state.getDefault(CONSEQUENCE) match {
@@ -391,11 +421,6 @@ object ModalEmbedding {
     //////////////////////////////////////////////////////////////////////
     // Logic specification parsing
     //////////////////////////////////////////////////////////////////////
-    import collection.mutable
-    private[this] val modalOperators: mutable.Buffer[String] = mutable.Buffer.empty
-    private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
-    private[this] def multiModal(identifier: String): Unit = modalOperators += identifier
-
 
     private[this] def createState(spec: TPTP.AnnotatedFormula, options: Set[EmbeddingOption]): Unit = {
       if (options contains EmbeddingOption.POLYMORPHIC) state(POLYMORPHISM) += (() -> true)
