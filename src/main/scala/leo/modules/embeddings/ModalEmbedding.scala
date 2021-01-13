@@ -113,10 +113,14 @@ object ModalEmbedding {
           left match {
             case THF.FunctionTerm("$box_int", Seq()) =>
               right match {
-                case THF.NumberTerm(TPTP.Integer(value)) => multiModal(value.toString)
-                  THF.BinaryFormula(App, mbox, THF.FunctionTerm(value.toString, Seq.empty)) // TODO
+                case THF.NumberTerm(TPTP.Integer(value)) => mboxIndexed(value.toString)
+                case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
               }
-            case THF.FunctionTerm("$dia_int", Seq()) => ???
+            case THF.FunctionTerm("$dia_int", Seq()) =>
+              right match {
+                case THF.NumberTerm(TPTP.Integer(value)) => mdiaIndexed(value.toString)
+                case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
+              }
             case THF.FunctionTerm("$box_i", Seq()) => ???
             case THF.FunctionTerm("$dia_i", Seq()) => ???
             case _ =>
@@ -213,7 +217,15 @@ object ModalEmbedding {
     }
 
     private[this] def mbox: THF.Formula = THF.FunctionTerm("mbox", Seq.empty)
+    private[this] def mboxIndexed(name: String): THF.Formula = {
+      multiModal(name)
+      THF.BinaryFormula(THF.App, mbox, THF.FunctionTerm(name, Seq.empty)) // TODO
+    }
     private[this] def mdia: THF.Formula = THF.FunctionTerm("mdia", Seq.empty)
+    private[this] def mdiaIndexed(name: String): THF.Formula = {
+      multiModal(name)
+      THF.BinaryFormula(THF.App, mdia, THF.FunctionTerm(name, Seq.empty)) // TODO
+    }
     private[this] def mbox_i: THF.Formula = THF.FunctionTerm("mbox_i", Seq.empty)
     private[this] def mdia_i: THF.Formula = THF.FunctionTerm("mdia_i", Seq.empty)
     private[this] def mbox_int: THF.Formula = THF.FunctionTerm("mbox_int", Seq.empty)
@@ -285,8 +297,9 @@ object ModalEmbedding {
           if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mglobalTPTPDef())
       }
 
-      // Then: Define connectives and modal operators
+      // Then: Define connectives
       result.appendAll(connectivesTPTPDef())
+      // Then: Define modal operators
       if (isMultiModal) result.appendAll(indexedModalOperatorsTPTPDef("sometype")) // TODO
       else result.appendAll(simpleModalOperatorsTPTPDef())
 
@@ -354,7 +367,9 @@ object ModalEmbedding {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
         annotatedTHF("thf(mbox_type, type, mbox: (mworld>$o)>mworld>$o )."),
-        annotatedTHF("thf(mbox_def, definition, ( mbox = (^ [Phi:mworld>$o, W:mworld]: ![V:mworld]: ( (mrel @ W @ V) => (Phi @ V) )))).")
+        annotatedTHF("thf(mbox_def, definition, ( mbox = (^ [Phi:mworld>$o, W:mworld]: ![V:mworld]: ( (mrel @ W @ V) => (Phi @ V) ))))."),
+        annotatedTHF("thf(mdia_type, type, mdia: (mworld>$o)>mworld>$o )."),
+        annotatedTHF("thf(mdia_def, definition, ( mdia = (^ [Phi:mworld>$o, W:mworld]: ?[V:mworld]: ( (mrel @ W @ V) & (Phi @ V) )))).")
       )
     }
 
@@ -362,7 +377,9 @@ object ModalEmbedding {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
         annotatedTHF(s"thf(mbox_type, type, mbox: $typ > (mworld>$$o)>mworld>$$o )."),
-        annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [R:$typ, A:mworld>$$o,W:mworld]: ! [V:mworld]: ( (mrel@R@W@V) => (A@V) )))).")
+        annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [R:$typ, A:mworld>$$o,W:mworld]: ! [V:mworld]: ( (mrel@R@W@V) => (A@V) ))))."),
+        annotatedTHF(s"thf(mdia_type, type, mdia: $typ > (mworld>$$o)>mworld>$$o )."),
+        annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [R:$typ, Phi:mworld>$$o, W:mworld]: ?[V:mworld]: ( (mrel @ R @ W @ V) & (Phi @ V) )))).")
       )
     }
 
@@ -375,7 +392,7 @@ object ModalEmbedding {
     // Logic specification parsing
     //////////////////////////////////////////////////////////////////////
     import collection.mutable
-    private[this] final val modalOperators: mutable.Buffer[String] = mutable.Buffer.empty
+    private[this] val modalOperators: mutable.Buffer[String] = mutable.Buffer.empty
     private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
     private[this] def multiModal(identifier: String): Unit = modalOperators += identifier
 
