@@ -297,10 +297,10 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       import scala.collection.mutable
 
       val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
-
+      /////////////////////////////////////////////////////////////
       // First: Introduce world type
       result.append(worldTypeTPTPDef())
-
+      /////////////////////////////////////////////////////////////
       // Then: Introduce mrel (as relation or as collection of relations)
       if (isMultiModal) {
         if (polymorphic) result.append(polyIndexedAccessibilityRelationTPTPDef())
@@ -310,7 +310,7 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
           }
         }
       } else result.append(simpleAccessibilityRelationTPTPDef())
-
+      /////////////////////////////////////////////////////////////
       // Then: Define mglobal/mlocal
       state.getDefault(CONSEQUENCE) match {
         case Some(consequence) => consequence match { // Add default and the other one if used
@@ -325,9 +325,10 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
           if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mlocalTPTPDef())
           if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mglobalTPTPDef())
       }
-
+      /////////////////////////////////////////////////////////////
       // Then: Define connectives
       result.appendAll(connectivesTPTPDef())
+      /////////////////////////////////////////////////////////////
       // Then: Define modal operators
       if (isMultiModal) {
         if (polymorphic) result.appendAll(polyIndexedModalOperatorsTPTPDef())
@@ -337,23 +338,55 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
           }
         }
       } else result.appendAll(simpleModalOperatorsTPTPDef())
-
+      /////////////////////////////////////////////////////////////
       // Then: Give mrel properties (sem/syn)
       // write used properties and assign (if semantical)
       // or write syntactical axioms (if syntactical)
-
+      // TODO
+      /////////////////////////////////////////////////////////////
       // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary)
-
+      if (polymorphic) {
+        if (quantifierTypes.nonEmpty) {
+          if (quantifierTypes.exists(ty => state(DOMAIN)(ty.pretty) != DOMAIN_CONSTANT))
+            result.appendAll(polyIndexedExistsInWorldTPTPDef()) // define poly eiw
+          quantifierTypes foreach { ty =>
+            if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
+              result.appendAll(polyIndexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw with that type
+            }
+            if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
+              result.appendAll(polyIndexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw with that type
+            }
+          }
+        }
+      } else {
+        quantifierTypes foreach { ty =>
+          if (state(DOMAIN)(ty.pretty) != DOMAIN_CONSTANT) {
+            result.appendAll(indexedExistsInWorldTPTPDef(ty)) // define eiw with standard axioms
+          }
+          if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
+            result.appendAll(indexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw
+          }
+          if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
+            result.appendAll(indexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw
+          }
+        }
+      }
+      /////////////////////////////////////////////////////////////
       // Then: Define quantifiers (TH0/TH1)
       if (polymorphic) {
-        if (quantifierTypes.nonEmpty) result.appendAll(polyIndexedQuantifierTPTPDef()) // TODO: Vary only if atleast one cary/cumul/decr
+        if (quantifierTypes.nonEmpty) {
+          if (quantifierTypes.exists(ty => state(DOMAIN)(ty.pretty) == DOMAIN_CONSTANT))
+            result.appendAll(polyIndexedConstQuantifierTPTPDef())
+          if (quantifierTypes.exists(ty => state(DOMAIN)(ty.pretty) != DOMAIN_CONSTANT))
+            result.appendAll(polyIndexedVaryQuantifierTPTPDef())
+        }
       } else {
         quantifierTypes foreach { ty =>
           if (state(DOMAIN)(ty.pretty) == DOMAIN_CONSTANT) result.appendAll(indexedConstQuantifierTPTPDef(ty))
-          else result.appendAll(indexedConstQuantifierTPTPDef(ty))
+          else result.appendAll(indexedVaryQuantifierTPTPDef(ty))
         }
       }
-
+      /////////////////////////////////////////////////////////////
       // Return all
       result.toSeq
     }
@@ -465,20 +498,86 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       )
     }
 
-    private[this] def polyIndexedQuantifierTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+    private[this] def polyIndexedVaryQuantifierTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(mforall_const_type, type, mforall_const: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
-        annotatedTHF("thf(mforall_const_def, definition, mforall_const = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ! [X:T]: (A @ X @ W)))."),
-        annotatedTHF("thf(mexists_const_type, type, mexists_const: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
-        annotatedTHF("thf(mexists_const_def, definition, mexists_const = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ? [X:T]: (A @ X @ W)))."),
         annotatedTHF("thf(mforall_vary_type, type, mforall_vary: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
         annotatedTHF("thf(mforall_vary_def, definition, mforall_vary = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ! [X:T]: ((eiw @ T @ X @ W) => (A @ X @ W))))."),
         annotatedTHF("thf(mexists_vary_type, type, mexists_vary: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
         annotatedTHF("thf(mexists_vary_def, definition, mexists_vary = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ? [X:T]: ((eiw @ T @ X @ W) & (A @ X @ W)))).")
       )
     }
-//    annotatedTHF("thf(eiw_type, type, eiw: !>[T:$tType]: (T > mworld > $o))."),
+
+    private[this] def polyIndexedConstQuantifierTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF("thf(mforall_const_type, type, mforall_const: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
+        annotatedTHF("thf(mforall_const_def, definition, mforall_const = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ! [X:T]: (A @ X @ W)))."),
+        annotatedTHF("thf(mexists_const_type, type, mexists_const: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
+        annotatedTHF("thf(mexists_const_def, definition, mexists_const = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ? [X:T]: (A @ X @ W))).")
+      )
+    }
+
+    private[this] def indexedExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF(s"thf(eiw_${serializeType(typ)}_type, type, eiw_${serializeType(typ)}: (${typ.pretty} > mworld > $$o))."),
+        annotatedTHF(s"thf(eiw_${serializeType(typ)}_nonempty, axiom, ![W:mworld]: ?[X:${typ.pretty}]: (eiw_${serializeType(typ)} @ X @ W) ).")
+      )
+    }
+    private[this] def indexedCumulativeExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      if (isMultiModal) {
+        modalOperators.keySet.map(mrelTy => annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel_${serializeType(mrelTy)} @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V))).")).toSeq
+      } else {
+        Seq(
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V))).")
+        )
+      }
+    }
+    private[this] def indexedDecreasingExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      if (isMultiModal) {
+        modalOperators.keySet.map(mrelTy => annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel_${serializeType(mrelTy)} @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")).toSeq
+      } else {
+        Seq(
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_decr, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")
+        )
+      }
+    }
+
+    private[this] def polyIndexedExistsInWorldTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF("thf(eiw_type, type, eiw: !>[T:$tType]: (T > mworld > $o))."),
+        annotatedTHF("thf(eiw_nonempty, axioms, ![T:$tType, W:mworld]: ?[X:T]: (eiw @ T @ X @ W) ).")
+      )
+    }
+    private[this] def polyIndexedCumulativeExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      if (isMultiModal) {
+        Seq(
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![T:$$tType, R:T, W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ T @ R @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
+        )
+      } else {
+        Seq(
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
+        )
+      }
+
+    }
+    private[this] def polyIndexedDecreasingExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      if (isMultiModal) {
+        Seq(
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![T:$$tType, R:T, W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ T @ R @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
+        )
+      } else {
+        Seq(
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
+        )
+      }
+    }
 
 
 
