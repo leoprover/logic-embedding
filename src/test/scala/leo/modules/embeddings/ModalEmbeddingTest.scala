@@ -16,8 +16,8 @@ class ModalEmbeddingTest  extends AnyFunSuite {
   println("###################################")
 
   for (filename <- testFiles) {
-    test(s"Monorphic ${filename.getName}") {
-      println(s"Embedding ${filename.getName} ...")
+    test(s"Monomorphic ${filename.getName}") {
+      println(s"Monomorphic embedding ${filename.getName} ...")
       val file = io.Source.fromFile(filename.getAbsolutePath)
       val input = TPTPParser.problem(file)
       val transformed = ModalEmbedding.apply(input.formulas, Set(MONOMORPHIC))
@@ -31,7 +31,7 @@ class ModalEmbeddingTest  extends AnyFunSuite {
 
   for (filename <- testFiles) {
     test(s"Polymorphic ${filename.getName}") {
-      println(s"Embedding ${filename.getName} ...")
+      println(s"Polymorphic embedding ${filename.getName} ...")
       val file = io.Source.fromFile(filename.getAbsolutePath)
       val input = TPTPParser.problem(file)
       val transformed = ModalEmbedding.apply(input.formulas, Set(POLYMORPHIC))

@@ -427,8 +427,8 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
         annotatedTHF("thf(mactual_type, type, mactual: mworld)."),
-        annotatedTHF("thf(mlocal_type, type, mglobal: (mworld > $o) > $o)."),
-        annotatedTHF("thf(mlocal_def, type, mglobal = (^ [Phi: mworld > $o]: (Phi @ mactual)) ).")
+        annotatedTHF("thf(mlocal_type, type, mlocal: (mworld > $o) > $o)."),
+        annotatedTHF("thf(mlocal_def, type, mlocal = (^ [Phi: mworld > $o]: (Phi @ mactual)) ).")
       )
     }
 
@@ -564,7 +564,6 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
           annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
         )
       }
-
     }
     private[this] def polyIndexedDecreasingExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
@@ -578,8 +577,6 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
         )
       }
     }
-
-
 
     //////////////////////////////////////////////////////////////////////
     // Logic specification parsing
