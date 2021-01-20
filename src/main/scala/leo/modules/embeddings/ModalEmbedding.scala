@@ -260,9 +260,9 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
     private def convertType(typ: TPTP.THF.Type): TPTP.THF.Type = {
       typ match {
         case THF.FunctionTerm(f, args) =>
-          val convertedArgs = args.map(convertType) ///TODO What to do with those?
+          val convertedArgs = args.map(convertType)
           if (state(RIGIDITY)(f)) THF.FunctionTerm(f, convertedArgs)
-          else THF.BinaryFormula(THF.FunTyConstructor, worldType, THF.FunctionTerm(f, convertedArgs))
+          else THF.BinaryFormula(THF.FunTyConstructor, THF.FunctionTerm(worldTypeName, Seq.empty), THF.FunctionTerm(f, convertedArgs))
 
         case THF.BinaryFormula(connective, left, right) =>
           val convertedLeft = convertType(left)
@@ -391,90 +391,88 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       result.toSeq
     }
 
-    private[this] def worldType: TPTP.THF.Type = {
-      THF.FunctionTerm("mworld", Seq.empty)
-    }
+    @inline private[this] def worldTypeName: String = "mworld"
 
     private[this] def worldTypeTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF("thf(mworld_type, type, mworld: $tType).")
+      annotatedTHF(s"thf($worldTypeName, type, $worldTypeName: $$tType).")
     }
 
     private[this] def simpleAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF("thf(mrel_type, type, mrel: mworld > mworld > $o).")
+      annotatedTHF(s"thf(mrel_type, type, mrel: $worldTypeName > $worldTypeName > $$o).")
     }
 
     private[this] def indexedAccessibilityRelationTPTPDef(typ: THF.Type): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF(s"thf(mrel_${serializeType(typ)}_type, type, mrel_${serializeType(typ)}: ${typ.pretty} > mworld > mworld > $$o).")
+      annotatedTHF(s"thf(mrel_${serializeType(typ)}_type, type, mrel_${serializeType(typ)}: ${typ.pretty} > $worldTypeName > $worldTypeName > $$o).")
     }
 
     private[this] def polyIndexedAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF("thf(mrel_type, type, mrel: !>[T:$tType]: (T > mworld > mworld > $o)).")
+      annotatedTHF(s"thf(mrel_type, type, mrel: !>[T:$$tType]: (T > $worldTypeName > $worldTypeName > $$o)).")
     }
 
     private[this] def mglobalTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(mglobal_type, type, mglobal: (mworld > $o) > $o)."),
-        annotatedTHF("thf(mglobal_def, type, mglobal = (^ [Phi: mworld > $o]: ![W: mworld]: (Phi @ W)) ).")
+        annotatedTHF(s"thf(mglobal_type, type, mglobal: ($worldTypeName > $$o) > $$o)."),
+        annotatedTHF(s"thf(mglobal_def, type, mglobal = (^ [Phi: $worldTypeName > $$o]: ![W: $worldTypeName]: (Phi @ W)) ).")
       )
     }
 
     private[this] def mlocalTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(mactual_type, type, mactual: mworld)."),
-        annotatedTHF("thf(mlocal_type, type, mlocal: (mworld > $o) > $o)."),
-        annotatedTHF("thf(mlocal_def, type, mlocal = (^ [Phi: mworld > $o]: (Phi @ mactual)) ).")
+        annotatedTHF(s"thf(mactual_type, type, mactual: $worldTypeName)."),
+        annotatedTHF(s"thf(mlocal_type, type, mlocal: ($worldTypeName > $$o) > $$o)."),
+        annotatedTHF(s"thf(mlocal_def, type, mlocal = (^ [Phi: $worldTypeName > $$o]: (Phi @ mactual)) ).")
       )
     }
 
     private[this] def connectivesTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(mnot_type, type , ( mnot: (mworld>$o)>mworld>$o) )."),
-        annotatedTHF("thf(mand_type, type , ( mand: (mworld>$o)>(mworld>$o)>mworld>$o) )."),
-        annotatedTHF("thf(mor_type, type , ( mor: (mworld>$o)>(mworld>$o)>mworld>$o) )."),
-        annotatedTHF("thf(mimplies_type, type , ( mimplies: (mworld>$o)>(mworld>$o)>mworld>$o) )."),
-        annotatedTHF("thf(mequiv_type, type , ( mequiv: (mworld>$o)>(mworld>$o)>mworld>$o) )."),
-        annotatedTHF("thf(mnot_def, definition , ( mnot = (^ [A:mworld>$o,W:mworld] : ~(A@W))))."),
-        annotatedTHF("thf(mand_def, definition , ( mand = (^ [A:mworld>$o,B:mworld>$o,W:mworld] : ( (A@W) & (B@W) ))))."),
-        annotatedTHF("thf(mor_def, definition , ( mor = (^ [A:mworld>$o,B:mworld>$o,W:mworld] : ( (A@W) | (B@W) ))))."),
-        annotatedTHF("thf(mimplies_def, definition , ( mimplies = (^ [A:mworld>$o,B:mworld>$o,W:mworld] : ( (A@W) => (B@W) ))))."),
-        annotatedTHF("thf(mequiv_def, definition , ( mequiv = (^ [A:mworld>$o,B:mworld>$o,W:mworld] : ( (A@W) <=> (B@W) )))).")
+        annotatedTHF(s"thf(mnot_type, type , ( mnot: ($worldTypeName>$$o)>$worldTypeName>$$o) )."),
+        annotatedTHF(s"thf(mand_type, type , ( mand: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
+        annotatedTHF(s"thf(mor_type, type , ( mor: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
+        annotatedTHF(s"thf(mimplies_type, type , ( mimplies: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
+        annotatedTHF(s"thf(mequiv_type, type , ( mequiv: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
+        annotatedTHF(s"thf(mnot_def, definition , ( mnot = (^ [A:$worldTypeName>$$o,W:$worldTypeName] : ~(A@W))))."),
+        annotatedTHF(s"thf(mand_def, definition , ( mand = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) & (B@W) ))))."),
+        annotatedTHF(s"thf(mor_def, definition , ( mor = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) | (B@W) ))))."),
+        annotatedTHF(s"thf(mimplies_def, definition , ( mimplies = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) => (B@W) ))))."),
+        annotatedTHF(s"thf(mequiv_def, definition , ( mequiv = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) <=> (B@W) )))).")
       )
     }
 
     private[this] def simpleModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(mbox_type, type, mbox: (mworld>$o)>mworld>$o )."),
-        annotatedTHF("thf(mbox_def, definition, ( mbox = (^ [Phi:mworld>$o, W:mworld]: ![V:mworld]: ( (mrel @ W @ V) => (Phi @ V) ))))."),
-        annotatedTHF("thf(mdia_type, type, mdia: (mworld>$o)>mworld>$o )."),
-        annotatedTHF("thf(mdia_def, definition, ( mdia = (^ [Phi:mworld>$o, W:mworld]: ?[V:mworld]: ( (mrel @ W @ V) & (Phi @ V) )))).")
+        annotatedTHF(s"thf(mbox_type, type, mbox: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ![V:$worldTypeName]: ( (mrel @ W @ V) => (Phi @ V) ))))."),
+        annotatedTHF(s"thf(mdia_type, type, mdia: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ W @ V) & (Phi @ V) )))).")
       )
     }
 
     private[this] def indexedModalOperatorsTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mbox_${serializeType(typ)}_type, type, mbox_${serializeType(typ)}: ${typ.pretty} > (mworld>$$o)>mworld>$$o )."),
-        annotatedTHF(s"thf(mbox_${serializeType(typ)}_def, definition, ( mbox_${serializeType(typ)} = (^ [R:${typ.pretty}, Phi:mworld>$$o,W:mworld]: ! [V:mworld]: ( (mrel_${serializeType(typ)} @ R @ W @ V) => (Phi @ V) ))))."),
-        annotatedTHF(s"thf(mdia_${serializeType(typ)}_type, type, mdia_${serializeType(typ)}: ${typ.pretty} > (mworld>$$o)>mworld>$$o )."),
-        annotatedTHF(s"thf(mdia_${serializeType(typ)}_def, definition, ( mdia_${serializeType(typ)} = (^ [R:${typ.pretty}, Phi:mworld>$$o, W:mworld]: ?[V:mworld]: ( (mrel_${serializeType(typ)} @ R @ W @ V) & (Phi @ V) )))).")
+        annotatedTHF(s"thf(mbox_${serializeType(typ)}_type, type, mbox_${serializeType(typ)}: ${typ.pretty} > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mbox_${serializeType(typ)}_def, definition, ( mbox_${serializeType(typ)} = (^ [R:${typ.pretty}, Phi:$worldTypeName>$$o,W:$worldTypeName]: ! [V:$worldTypeName]: ( (mrel_${serializeType(typ)} @ R @ W @ V) => (Phi @ V) ))))."),
+        annotatedTHF(s"thf(mdia_${serializeType(typ)}_type, type, mdia_${serializeType(typ)}: ${typ.pretty} > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mdia_${serializeType(typ)}_def, definition, ( mdia_${serializeType(typ)} = (^ [R:${typ.pretty}, Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel_${serializeType(typ)} @ R @ W @ V) & (Phi @ V) )))).")
       )
     }
 
     private[this] def polyIndexedModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(mbox_type, type, mbox: !>[T:$tType]: (T > (mworld>$o)>mworld>$o) )."),
-        annotatedTHF("thf(mbox_def, definition, ( mbox = (^ [T:$tType, R:T, Phi:mworld>$o, W:mworld]: ! [V:mworld]: ( (mrel @ T @ R @ W @ V) => (Phi @ V) ))))."),
-        annotatedTHF("thf(mdia_type, type, mdia: !>[T:$tType]: (T > (mworld>$o)>mworld>$o) )."),
-        annotatedTHF("thf(mdia_def, definition, ( mdia = (^ [T:$tType, R:T, Phi:mworld>$o, W:mworld]: ?[V:mworld]: ( (mrel @ T @ R @ W @ V) & (Phi @ V) )))).")
+        annotatedTHF(s"thf(mbox_type, type, mbox: !>[T:$$tType]: (T > ($worldTypeName>$$o)>$worldTypeName>$$o) )."),
+        annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [T:$$tType, R:T, Phi:$worldTypeName>$$o, W:$worldTypeName]: ! [V:$worldTypeName]: ( (mrel @ T @ R @ W @ V) => (Phi @ V) ))))."),
+        annotatedTHF(s"thf(mdia_type, type, mdia: !>[T:$$tType]: (T > ($worldTypeName>$$o)>$worldTypeName>$$o) )."),
+        annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [T:$$tType, R:T, Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ T @ R @ W @ V) & (Phi @ V) )))).")
       )
     }
 
@@ -482,66 +480,66 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
     private[this] def indexedConstQuantifierTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mforall_${serializeType(typ)}_type, type, mforall_${serializeType(typ)}: (${typ.pretty} > mworld > $$o) > mworld > $$o)."),
-        annotatedTHF(s"thf(mforall_${serializeType(typ)}_def, definition, mforall_${serializeType(typ)} = ( ^ [A:${typ.pretty}>mworld>$$o, W:mworld]: ! [X:${typ.pretty}]: (A @ X @ W)))."),
-        annotatedTHF(s"thf(mexists_${serializeType(typ)}_type, type, mexists_${serializeType(typ)}: (${typ.pretty} > mworld > $$o) > mworld > $$o)."),
-        annotatedTHF(s"thf(mexists_${serializeType(typ)}_def, definition, mexists_${serializeType(typ)} = ( ^ [A:${typ.pretty}>mworld>$$o, W:mworld]: ? [X:${typ.pretty}]: (A @ X @ W))).")
+        annotatedTHF(s"thf(mforall_${serializeType(typ)}_type, type, mforall_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o) > $worldTypeName > $$o)."),
+        annotatedTHF(s"thf(mforall_${serializeType(typ)}_def, definition, mforall_${serializeType(typ)} = ( ^ [A:${typ.pretty}>$worldTypeName>$$o, W:$worldTypeName]: ! [X:${typ.pretty}]: (A @ X @ W)))."),
+        annotatedTHF(s"thf(mexists_${serializeType(typ)}_type, type, mexists_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o) > $worldTypeName > $$o)."),
+        annotatedTHF(s"thf(mexists_${serializeType(typ)}_def, definition, mexists_${serializeType(typ)} = ( ^ [A:${typ.pretty}>$worldTypeName>$$o, W:$worldTypeName]: ? [X:${typ.pretty}]: (A @ X @ W))).")
       )
     }
     private[this] def indexedVaryQuantifierTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mforall_${serializeType(typ)}_type, type, mforall_${serializeType(typ)}: (${typ.pretty} > mworld > $$o) > mworld > $$o)."),
-        annotatedTHF(s"thf(mforall_${serializeType(typ)}_def, definition, mforall_${serializeType(typ)} = ( ^ [A:${typ.pretty}>mworld>$$o, W:mworld]: ! [X:${typ.pretty}]: ((eiw_${serializeType(typ)} @ X @ W) => (A @ X @ W))))."),
-        annotatedTHF(s"thf(mexists_${serializeType(typ)}_type, type, mexists_${serializeType(typ)}: (${typ.pretty} > mworld > $$o) > mworld > $$o)."),
-        annotatedTHF(s"thf(mexists_${serializeType(typ)}_def, definition, mexists_${serializeType(typ)} = ( ^ [A:${typ.pretty}>mworld>$$o, W:mworld]: ? [X:${typ.pretty}]: ((eiw_${serializeType(typ)} @ X @ W) & (A @ X @ W)))).")
+        annotatedTHF(s"thf(mforall_${serializeType(typ)}_type, type, mforall_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o) > $worldTypeName > $$o)."),
+        annotatedTHF(s"thf(mforall_${serializeType(typ)}_def, definition, mforall_${serializeType(typ)} = ( ^ [A:${typ.pretty}>$worldTypeName>$$o, W:$worldTypeName]: ! [X:${typ.pretty}]: ((eiw_${serializeType(typ)} @ X @ W) => (A @ X @ W))))."),
+        annotatedTHF(s"thf(mexists_${serializeType(typ)}_type, type, mexists_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o) > $worldTypeName > $$o)."),
+        annotatedTHF(s"thf(mexists_${serializeType(typ)}_def, definition, mexists_${serializeType(typ)} = ( ^ [A:${typ.pretty}>$worldTypeName>$$o, W:$worldTypeName]: ? [X:${typ.pretty}]: ((eiw_${serializeType(typ)} @ X @ W) & (A @ X @ W)))).")
       )
     }
 
     private[this] def polyIndexedVaryQuantifierTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(mforall_vary_type, type, mforall_vary: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
-        annotatedTHF("thf(mforall_vary_def, definition, mforall_vary = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ! [X:T]: ((eiw @ T @ X @ W) => (A @ X @ W))))."),
-        annotatedTHF("thf(mexists_vary_type, type, mexists_vary: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
-        annotatedTHF("thf(mexists_vary_def, definition, mexists_vary = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ? [X:T]: ((eiw @ T @ X @ W) & (A @ X @ W)))).")
+        annotatedTHF(s"thf(mforall_vary_type, type, mforall_vary: !>[T:$$tType]: ((T > $worldTypeName > $$o) > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(mforall_vary_def, definition, mforall_vary = ( ^ [T:$$tType, A:T>$worldTypeName>$$o, W:$worldTypeName]: ! [X:T]: ((eiw @ T @ X @ W) => (A @ X @ W))))."),
+        annotatedTHF(s"thf(mexists_vary_type, type, mexists_vary: !>[T:$$tType]: ((T > $worldTypeName > $$o) > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(mexists_vary_def, definition, mexists_vary = ( ^ [T:$$tType, A:T>$worldTypeName>$$o, W:$worldTypeName]: ? [X:T]: ((eiw @ T @ X @ W) & (A @ X @ W)))).")
       )
     }
 
     private[this] def polyIndexedConstQuantifierTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(mforall_const_type, type, mforall_const: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
-        annotatedTHF("thf(mforall_const_def, definition, mforall_const = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ! [X:T]: (A @ X @ W)))."),
-        annotatedTHF("thf(mexists_const_type, type, mexists_const: !>[T:$tType]: ((T > mworld > $o) > mworld > $o))."),
-        annotatedTHF("thf(mexists_const_def, definition, mexists_const = ( ^ [T:$tType, A:T>mworld>$o, W:mworld]: ? [X:T]: (A @ X @ W))).")
+        annotatedTHF(s"thf(mforall_const_type, type, mforall_const: !>[T:$$tType]: ((T > $worldTypeName > $$o) > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(mforall_const_def, definition, mforall_const = ( ^ [T:$$tType, A:T>$worldTypeName>$$o, W:$worldTypeName]: ! [X:T]: (A @ X @ W)))."),
+        annotatedTHF(s"thf(mexists_const_type, type, mexists_const: !>[T:$$tType]: ((T > $worldTypeName > $$o) > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(mexists_const_def, definition, mexists_const = ( ^ [T:$$tType, A:T>$worldTypeName>$$o, W:$worldTypeName]: ? [X:T]: (A @ X @ W))).")
       )
     }
 
     private[this] def indexedExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(eiw_${serializeType(typ)}_type, type, eiw_${serializeType(typ)}: (${typ.pretty} > mworld > $$o))."),
-        annotatedTHF(s"thf(eiw_${serializeType(typ)}_nonempty, axiom, ![W:mworld]: ?[X:${typ.pretty}]: (eiw_${serializeType(typ)} @ X @ W) ).")
+        annotatedTHF(s"thf(eiw_${serializeType(typ)}_type, type, eiw_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(eiw_${serializeType(typ)}_nonempty, axiom, ![W:$worldTypeName]: ?[X:${typ.pretty}]: (eiw_${serializeType(typ)} @ X @ W) ).")
       )
     }
     private[this] def indexedCumulativeExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       if (isMultiModal) {
-        modalOperators.keySet.map(mrelTy => annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel_${serializeType(mrelTy)} @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V))).")).toSeq
+        modalOperators.keySet.map(mrelTy => annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel_${serializeType(mrelTy)} @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V))).")).toSeq
       } else {
         Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V))).")
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V))).")
         )
       }
     }
     private[this] def indexedDecreasingExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       if (isMultiModal) {
-        modalOperators.keySet.map(mrelTy => annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel_${serializeType(mrelTy)} @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")).toSeq
+        modalOperators.keySet.map(mrelTy => annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel_${serializeType(mrelTy)} @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")).toSeq
       } else {
         Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_decr, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_decr, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")
         )
       }
     }
@@ -549,19 +547,19 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
     private[this] def polyIndexedExistsInWorldTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF("thf(eiw_type, type, eiw: !>[T:$tType]: (T > mworld > $o))."),
-        annotatedTHF("thf(eiw_nonempty, axioms, ![T:$tType, W:mworld]: ?[X:T]: (eiw @ T @ X @ W) ).")
+        annotatedTHF(s"thf(eiw_type, type, eiw: !>[T:$$tType]: (T > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(eiw_nonempty, axioms, ![T:$$tType, W:$worldTypeName]: ?[X:T]: (eiw @ T @ X @ W) ).")
       )
     }
     private[this] def polyIndexedCumulativeExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       if (isMultiModal) {
         Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![T:$$tType, R:T, W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ T @ R @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![T:$$tType, R:T, W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ T @ R @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
         )
       } else {
         Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
         )
       }
     }
@@ -569,11 +567,11 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       import modules.input.TPTPParser.annotatedTHF
       if (isMultiModal) {
         Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![T:$$tType, R:T, W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ T @ R @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![T:$$tType, R:T, W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ T @ R @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
         )
       } else {
         Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:mworld, V:mworld, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
+          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
         )
       }
     }
