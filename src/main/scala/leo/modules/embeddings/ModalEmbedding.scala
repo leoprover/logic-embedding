@@ -38,7 +38,7 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
     private final val DOMAIN_DECREASING = 3
     private final val DOMAIN = state.createKey[String, Int]()
 
-    private final val MODALS = state.createKey[String, Seq[String]]()
+    private final val MODALS = state.createKey[THF.Formula, Seq[String]]()
     ////////////////////////////////////////////////////////////////////
     // Embedding options
     private val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
@@ -575,6 +575,63 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
         )
       }
     }
+
+    private def isModalAxiomName(name: String): Boolean = name.startsWith("$modal_axiom_")
+    lazy val semanticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = Map(
+      "$modal_axiom_K" -> None,
+      "$modal_axiom_T" -> None,
+      "$modal_axiom_B" -> None,
+      "$modal_axiom_D" -> None,
+      "$modal_axiom_4" -> None,
+      "$modal_axiom_5" -> None,
+      "$modal_axiom_C4" -> None,
+      "$modal_axiom_CD" -> None,
+      "$modal_axiom_GL" -> None,
+      "$modal_axiom_GRZ" -> None,
+      "$modal_axiom_H" -> None,
+      "$modal_axiom_M" -> None,
+      "$modal_axiom_G" -> None
+    )
+    lazy val syntacticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = Map(
+      "$modal_axiom_K" -> None,
+      "$modal_axiom_T" -> None,
+      "$modal_axiom_B" -> None,
+      "$modal_axiom_D" -> None,
+      "$modal_axiom_4" -> None,
+      "$modal_axiom_5" -> None,
+      "$modal_axiom_C4" -> None,
+      "$modal_axiom_CD" -> None,
+      "$modal_axiom_GL" -> None,
+      "$modal_axiom_Grz" -> None,
+      "$modal_axiom_H" -> None,
+      "$modal_axiom_M" -> None,
+      "$modal_axiom_G" -> None
+    )
+
+    private def isModalSystemName(name: String): Boolean = name.startsWith("$modal_system_")
+    lazy val semanticSystemTable: Map[String, Seq[String]] = Map(
+      "$modal_system_K" -> Seq("$modal_axiom_K"),
+      "$modal_system_K4" -> Seq("$modal_axiom_K", "$modal_axiom_4"),
+      "$modal_system_K5" -> Seq("$modal_axiom_K", "$modal_axiom_5"),
+      "$modal_system_KB" -> Seq("$modal_axiom_K", "$modal_axiom_B"),
+      "$modal_system_K45" -> Seq("$modal_axiom_K", "$modal_axiom_4", "$modal_axiom_5"),
+      "$modal_system_KB5" -> Seq("$modal_axiom_K", "$modal_axiom_B", "$modal_axiom_5"),
+      "$modal_system_D" -> Seq("$modal_axiom_K", "$modal_axiom_D"),
+      "$modal_system_D4" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_4"),
+      "$modal_system_D5" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_5"),
+      "$modal_system_D45" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_4", "$modal_axiom_5"),
+      "$modal_system_DB" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_B"),
+      "$modal_system_T" -> Seq("$modal_axiom_K", "$modal_axiom_T"),
+      "$modal_system_B" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_B"),
+      "$modal_system_S4" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4"),
+      "$modal_system_S5" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_5"),
+      "$modal_system_S5U" -> Seq(),
+      "$modal_system_K4W" -> Seq("$modal_axiom_K", "$modal_axiom_GL"),
+      "$modal_system_4_1" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_H"),
+      "$modal_system_4_2" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_M"),
+      "$modal_system_4_3" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4" ,"$modal_axiom_G"),
+      "$modal_system_Grz" -> Seq("$modal_axiom_K", "$modal_axiom_Grz"),
+    )
 
     //////////////////////////////////////////////////////////////////////
     // Logic specification parsing
