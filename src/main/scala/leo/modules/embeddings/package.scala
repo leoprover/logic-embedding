@@ -15,7 +15,9 @@ package object embeddings {
 
   object ModalEmbeddingOption extends Enumeration {
     type ModalEmbeddingOption = Value
-    final val MONOMORPHIC, POLYMORPHIC, SEMANTICAL, SYNTACTICAL = Value
+    final val MONOMORPHIC, POLYMORPHIC,
+              MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
+              DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL = Value
   }
 
 
