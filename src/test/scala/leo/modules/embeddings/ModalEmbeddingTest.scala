@@ -16,11 +16,21 @@ class ModalEmbeddingTest  extends AnyFunSuite {
   println("###################################")
 
   for (filename <- testFiles) {
-    test(s"Monomorphic ${filename.getName}") {
-      println(s"Monomorphic embedding ${filename.getName} ...")
+    test(s"Monomorphic semantical ${filename.getName}") {
+      println(s"Monomorphic semantical embedding ${filename.getName} ...")
       val file = io.Source.fromFile(filename.getAbsolutePath)
       val input = TPTPParser.problem(file)
-      val transformed = ModalEmbedding.apply(input.formulas, Set(MONOMORPHIC))
+      val transformed = ModalEmbedding.apply(input.formulas, Set(MONOMORPHIC, MODALITIES_SEMANTICAL))
+      transformed.foreach(t => println(t.pretty))
+    }
+  }
+
+  for (filename <- testFiles) {
+    test(s"Monomorphic syntactical ${filename.getName}") {
+      println(s"Monomorphic syntactical embedding ${filename.getName} ...")
+      val file = io.Source.fromFile(filename.getAbsolutePath)
+      val input = TPTPParser.problem(file)
+      val transformed = ModalEmbedding.apply(input.formulas, Set(MONOMORPHIC, MODALITIES_SYNTACTICAL))
       transformed.foreach(t => println(t.pretty))
     }
   }
@@ -30,7 +40,7 @@ class ModalEmbeddingTest  extends AnyFunSuite {
   println("###################################")
 
   for (filename <- testFiles) {
-    test(s"Polymorphic ${filename.getName}") {
+    test(s"Polymorphic semantical ${filename.getName}") {
       println(s"Polymorphic embedding ${filename.getName} ...")
       val file = io.Source.fromFile(filename.getAbsolutePath)
       val input = TPTPParser.problem(file)
