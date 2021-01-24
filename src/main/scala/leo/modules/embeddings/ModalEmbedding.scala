@@ -348,11 +348,17 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
         } else {
           if (polymorphic) polyIndexedSyntacticAxiomTable else indexedSyntacticAxiomTable
         }
-        modalOperators foreach { case (ty, idx) =>
-          if (polymorphic) {
-
-          } else {
-
+        modalOperators foreach { case (ty, idxs) =>
+          idxs foreach { idx =>
+            val modalSystem = state(MODALS).apply(idx)
+            val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
+            axiomNames foreach { ax =>
+              val axiom = axiomTable.apply(ax)
+              axiom.foreach{ f =>
+                val res = f(idx, ty)
+                result.append(res)
+              }
+            }
           }
         }
       } else {
@@ -722,9 +728,48 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       )
     }
 
-    lazy val indexedSemanticAxiomTable: Map[String, Option[Function2[THF.Formula, THF.Type, TPTP.AnnotatedFormula]]] = Map(
-
-    )
+    lazy val indexedSemanticAxiomTable: Map[String, Option[Function2[THF.Formula, THF.Type, TPTP.AnnotatedFormula]]] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Map(
+        "$modal_axiom_K" -> None,
+        "$modal_axiom_T" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${serializeType(typ)}_${idx.pretty}_reflexive', axiom, ![W:$worldTypeName]: (mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ W))."
+        )),
+        "$modal_axiom_B" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${serializeType(typ)}_${idx.pretty}_symmetric', axiom, ![W:$worldTypeName, V:$worldTypeName]: ((mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ V) => (mrel_${serializeType(typ)} @ ${idx.pretty} @ V @ W)))."
+        )),
+        "$modal_axiom_D" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${serializeType(typ)}_${idx.pretty}_serial', axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ V))."
+        )),
+        "$modal_axiom_4" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${serializeType(typ)}_${idx.pretty}_transitive', axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ V) & (mrel_${serializeType(typ)} @ ${idx.pretty} @ V @ U)) => (mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ U)))."
+        )),
+        "$modal_axiom_5" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${serializeType(typ)}_${idx.pretty}_euclidean', axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ U) & (mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ V)) => (mrel_${serializeType(typ)} @ ${idx.pretty} @ U @ V)))."
+        )),
+        "$modal_axiom_C4" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${serializeType(typ)}_${idx.pretty}_dense', axiom, ![W:$worldTypeName,U:$worldTypeName]: ((mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ U) => (? [V:$worldTypeName]: ((mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ V) & (mrel_${serializeType(typ)} @ ${idx.pretty} @ V @ U)))))."
+        )),
+        "$modal_axiom_CD" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${serializeType(typ)}_${idx.pretty}_functional', axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ U) & (mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ V)) => (U = V)))."
+        ))//,
+        //        "$modal_axiom_GL" -> Some(annotatedTHF(
+        //          s"thf(mrel_gl, axiom, ![W:$worldTypeName]: ())."
+        //        )),
+        //        "$modal_axiom_GRZ" -> Some(annotatedTHF(
+        //          s"thf(mrel_grz, axiom, ![W:$worldTypeName]: ())."
+        //        )),
+        //        "$modal_axiom_H" -> Some(annotatedTHF(
+        //          s"thf(mrel_h, axiom, ![W:$worldTypeName]: ())."
+        //        )),
+        //        "$modal_axiom_M" -> Some(annotatedTHF(
+        //          s"thf(mrel_m, axiom, ![W:$worldTypeName]: ())."
+        //        )),
+        //        "$modal_axiom_G" -> Some(annotatedTHF(
+        //          s"thf(mrel_g, axiom, ![W:$worldTypeName]: ())."
+        //        ))
+      )
+    }
     lazy val indexedSyntacticAxiomTable: Map[String, Option[Function2[THF.Formula, THF.Type, TPTP.AnnotatedFormula]]] = Map(
 
     )
