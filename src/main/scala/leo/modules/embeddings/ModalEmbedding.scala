@@ -149,6 +149,8 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
 
         case THF.ConnectiveTerm(conn) => convertConnective(conn)
 
+        case c@THF.DefinedTH1ConstantTerm(_) => c
+
         case THF.Tuple(elements) =>
           val convertedElements: Seq[TPTP.THF.Formula] = elements.map(convertFormula)
           THF.Tuple(convertedElements)
@@ -172,11 +174,11 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
     private def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
       val name = connective match {
         case THF.~ => "mnot"
-        case THF.!! => "mforall"
-        case THF.?? => "mexists"
-        case THF.@@+ => "mchoice"
-        case THF.@@- => "mdesc"
-        case THF.@= => "meq"
+//        case THF.!! => "mforall"
+//        case THF.?? => "mexists"
+//        case THF.@@+ => "mchoice"
+//        case THF.@@- => "mdesc"
+//        case THF.@= => "meq"
         case THF.Eq => "meq"
         case THF.Neq => "mneq"
         case THF.<=> => "mequiv"
@@ -770,9 +772,84 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
         //        ))
       )
     }
-    lazy val indexedSyntacticAxiomTable: Map[String, Option[Function2[THF.Formula, THF.Type, TPTP.AnnotatedFormula]]] = Map(
-
-    )
+    lazy val indexedSyntacticAxiomTable: Map[String, Option[Function2[THF.Formula, THF.Type, TPTP.AnnotatedFormula]]] = {
+      import modules.input.TPTPParser.{annotatedTHF, thf}
+      Map(
+        "$modal_axiom_K" -> None,
+        "$modal_axiom_T" -> {
+          val formula = convertFormula(thf("($box @ Phi) => Phi")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_reflexive', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_B" -> {
+          val formula = convertFormula(thf("Phi => ($box @ ($dia @ Phi))")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_symmetric', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_D" -> {
+          val formula = convertFormula(thf("($box @ Phi) => ($dia @ Phi)")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_serial', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_4" -> {
+          val formula = convertFormula(thf("($box @ Phi) => ($box @ ($box @ Phi))")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_transitive', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_5" -> {
+          val formula = convertFormula(thf("($dia @ Phi) => ($box @ ($dia @ Phi))")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_euclidean', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_C4" -> {
+          val formula = convertFormula(thf("($box @ ($box @ Phi)) => ($box @ Phi)")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_dense', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_CD" -> {
+          val formula = convertFormula(thf("($dia @ Phi) => ($box @ Phi)")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_functional', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_GL" -> {
+          val formula = convertFormula(thf("($box @ (($box @ Phi) => Phi)) => ($box @ Phi)")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_gl', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_GRZ" -> {
+          val formula = convertFormula(thf("($box @ (($box @ (Phi => ($box @ Phi))) => Phi)) => Phi")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_grz', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_H" -> {
+          val formula = convertFormula(thf("($box @ (($box @ Phi) => Psi)) | ($box @ (($box @ Psi) => Phi))")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_h', axiom, ![Phi:$worldTypeName>$$o, Psi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_M" -> {
+          val formula = convertFormula(thf("($box @ ($dia @ Phi)) => ($dia @ ($box @ Phi))")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_m', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        },
+        "$modal_axiom_G" -> {
+          val formula = convertFormula(thf("($dia @ ($box @ Phi)) => ($box @ ($dia @ Phi))")).pretty
+          Some((idx, typ) => annotatedTHF(
+            s"thf('mrel_${serializeType(typ)}_${idx.pretty}_g', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
+          ))
+        }
+      )
+    }
 
     lazy val polyIndexedSemanticAxiomTable: Map[String, Option[Function2[THF.Formula, THF.Type, TPTP.AnnotatedFormula]]] = {
       import modules.input.TPTPParser.annotatedTHF
