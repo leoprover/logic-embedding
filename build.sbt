@@ -1,4 +1,4 @@
-lazy val parserLib = ProjectRef(uri("git://github.com/leoprover/scala-tptp-parser#v1.1"), "tptpParser")
+lazy val parserLib = ProjectRef(uri("git://github.com/leoprover/scala-tptp-parser#v1.2"), "tptpParser")
 
 //ProjectRef(file("../scala-tptp-parser"), "tptpParser")
    // replace with GitHub link when possible: RootProject(uri("git://github.com/...#tagOrCommit"))
