@@ -46,6 +46,10 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
     private final val MODALITY_EMBEDDING_SYNTACTICAL = true
     private final val MODALITY_EMBEDDING_SEMANTICAL = false
     private val modalityEmbeddingType: Boolean = embeddingOptions.contains(MODALITIES_SYNTACTICAL) // default semantical
+
+    private final val DOMAINS_EMBEDDING_SYNTACTICAL = true
+    private final val DOMAINS_EMBEDDING_SEMANTICAL = false
+    private val domainEmbeddingType: Boolean = embeddingOptions.contains(DOMAINS_SYNTACTICAL) // default semantical
     ////////////////////////////////////////////////////////////////////
 
     def apply(): Seq[AnnotatedFormula] = {
@@ -321,11 +325,11 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
             if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mlocalTPTPDef())
           case CONSEQUENCE_LOCAL =>
             result.appendAll(mlocalTPTPDef())
-            if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mglobalTPTPDef())
+            if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_GLOBAL) || modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL) result.appendAll(mglobalTPTPDef())
         }
         case None => // Add only those used
+          if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_GLOBAL) || modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL) result.appendAll(mglobalTPTPDef())
           if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mlocalTPTPDef())
-          if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mglobalTPTPDef())
       }
       /////////////////////////////////////////////////////////////
       // Then: Define connectives
