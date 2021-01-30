@@ -149,7 +149,7 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
           val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
-          THF.BinaryFormula(App, convertedConnective, THF.BinaryFormula(App, convertedLeft, convertedRight))
+          THF.BinaryFormula(App, THF.BinaryFormula(App, convertedConnective, convertedLeft), convertedRight)
 
         case THF.ConnectiveTerm(conn) => convertConnective(conn)
 
@@ -186,7 +186,7 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
         case THF.Eq => "meq"
         case THF.Neq => "mneq"
         case THF.<=> => "mequiv"
-        case THF.Impl => "mimpl"
+        case THF.Impl => "mimplies"
         case THF.<= => "mif"
         case THF.<~> => "mniff"
         case THF.~| => "mnor"
@@ -452,7 +452,7 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
         annotatedTHF(s"thf(mglobal_type, type, mglobal: ($worldTypeName > $$o) > $$o)."),
-        annotatedTHF(s"thf(mglobal_def, type, mglobal = (^ [Phi: $worldTypeName > $$o]: ![W: $worldTypeName]: (Phi @ W)) ).")
+        annotatedTHF(s"thf(mglobal_def, definition, mglobal = (^ [Phi: $worldTypeName > $$o]: ![W: $worldTypeName]: (Phi @ W)) ).")
       )
     }
 
@@ -461,7 +461,7 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
       Seq(
         annotatedTHF(s"thf(mactual_type, type, mactual: $worldTypeName)."),
         annotatedTHF(s"thf(mlocal_type, type, mlocal: ($worldTypeName > $$o) > $$o)."),
-        annotatedTHF(s"thf(mlocal_def, type, mlocal = (^ [Phi: $worldTypeName > $$o]: (Phi @ mactual)) ).")
+        annotatedTHF(s"thf(mlocal_def, definition, mlocal = (^ [Phi: $worldTypeName > $$o]: (Phi @ mactual)) ).")
       )
     }
 
