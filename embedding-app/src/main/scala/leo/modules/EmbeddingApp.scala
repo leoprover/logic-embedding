@@ -1,11 +1,12 @@
 package leo.modules
 
 import leo.datastructures.TPTP
+import leo.datastructures.TPTP.{AnnotatedFormula, Problem}
+import leo.modules.embeddings.Embedding
+import leo.modules.input.TPTPParser
 
 import java.io.{File, FileNotFoundException, PrintWriter}
 import scala.io.Source
-import leo.datastructures.TPTP.{AnnotatedFormula, Problem}
-import leo.modules.input.TPTPParser
 
 object EmbeddingApp {
   final val name: String = "embed"
@@ -14,13 +15,13 @@ object EmbeddingApp {
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None
   private[this] var logic: Option[String] = None
-  private[this] var parameter: Set[String] = Set.empty
+  private[this] var parameterNames: Set[String] = Set.empty
   private[this] var specs: Map[String, String] = Map.empty
 
-  private[this] val embeddingTable: Map[String, Function1[Seq[AnnotatedFormula], Seq[AnnotatedFormula]]] = {
+  private[this] val embeddingTable: Map[String, Embedding] = {
     import leo.modules.embeddings.ModalEmbedding
     Map(
-      "modal" -> (x => ModalEmbedding.apply(x))
+      "modal" -> ModalEmbedding
     )
   }
 
@@ -42,13 +43,23 @@ object EmbeddingApp {
         infile = Some(if (inputFileName == "-") io.Source.stdin else io.Source.fromFile(inputFileName))
         // Parse and select embedding
         val parsedInput = TPTPParser.problem(infile.get)
-        val goalLogic = parsedInput.formulas.find(f => f.role == "logic") match {
-          case Some(value) => getLogicFromSpec(value)
-          case None if logic.isDefined => logic.get // TODO Also prepend logic annotated formula here
-          case None => throw new NoSuchFieldException()
+        val goalLogic = getLogic(parsedInput)
+        val embeddingFunction = try {
+          embeddingTable(goalLogic)
+        } catch {
+          case _: NoSuchElementException => throw new UnsupportedLogicException(goalLogic)
+        }
+        // Transform embedding parameters
+        val parameters = parameterNames.map { p =>
+          try {
+            embeddingFunction.embeddingParameter.withName(p)
+          } catch {
+            case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
+          }
         }
         // Do embedding
-        val embeddedFormulas = embeddingTable(goalLogic)(parsedInput.formulas)
+        // TODO: Prepend logic spec if necessary
+        val embeddedFormulas = embeddingFunction.apply(parsedInput.formulas, parameters.asInstanceOf[Set[embeddingFunction.OptionType#Value]]) // The world is bad
         val embeddedProblem = Problem(parsedInput.includes, embeddedFormulas)
         // Write result
         val result = generateResult(embeddedProblem)
@@ -60,7 +71,17 @@ object EmbeddingApp {
           println(e.getMessage)
           usage()
           error = true
-        case _: NoSuchFieldException =>
+        case e: UnsupportedLogicException =>
+          println(s"Unsupported logic '${e.logic}'. Aborting.")
+          error = true
+        case e: UnknownParameterException =>
+          println(s"Parameter ${e.parameterName} is unknown.")
+          println(s"Valid parameters are: ${e.allowedParameters}")
+          error = true
+        case e: MalformedLogicSpecificationException =>
+          println(s"Logic specification in the input file cannot be interpreted: ${e.spec.pretty}")
+          error = true
+        case _: UnspecifiedLogicException =>
           println(s"Logic specification not found inside of input file and no explicit logic given via -l. Aborting.")
           error = true
         case e: FileNotFoundException =>
@@ -77,6 +98,8 @@ object EmbeddingApp {
     }
   }
 
+
+
   private[this] final def generateResult(problem: Problem): String = {
     import java.util.Calendar
 
@@ -88,14 +111,22 @@ object EmbeddingApp {
     sb.toString()
   }
 
+  private[this] final def getLogic(parsedInput: TPTP.Problem): String = {
+    parsedInput.formulas.find(f => f.role == "logic") match {
+      case Some(value) => getLogicFromSpec(value)
+      case None if logic.isDefined => logic.get
+      case None => throw new UnspecifiedLogicException
+    }
+  }
+
   private[this] final def getLogicFromSpec(formula: AnnotatedFormula): String = {
     import leo.datastructures.TPTP.THF
     formula match {
       case TPTP.THFAnnotated(_, _, THF.Logical(f), _) => f match {
         case THF.BinaryFormula(THF.:=, THF.FunctionTerm(logic, Seq()), _) => if (logic.startsWith("$")) logic.tail else logic
-        case _ => throw new IllegalArgumentException // TODO
+        case _ => throw new MalformedLogicSpecificationException(formula)
       }
-      case _ => throw new IllegalArgumentException // TODO
+      case _ => throw new MalformedLogicSpecificationException(formula)
     }
   }
 
@@ -125,7 +156,7 @@ object EmbeddingApp {
         |""".stripMargin)
   }
 
-  private final def parseArgs(args: Seq[String]): Any = {
+  private[this] final def parseArgs(args: Seq[String]): Any = {
     var args0 = args
     while (args0.nonEmpty) {
       args0 match {
@@ -134,7 +165,7 @@ object EmbeddingApp {
           logic = Some(l)
         case Seq("-p", p, rest@_*) =>
           args0 = rest
-          parameter = parameter + p
+          parameterNames = parameterNames + p
         case Seq("-s", eq, rest@_*) =>
           args0 = rest
           eq.split("=", 2).toSeq match {
@@ -152,6 +183,11 @@ object EmbeddingApp {
         case _ => throw new IllegalArgumentException("Unrecognized arguments.")
       }
     }
-
   }
+
+  private[this] class UnknownParameterException(val parameterName: String, val allowedParameters: String) extends RuntimeException
+  private[this] class MalformedLogicSpecificationException(val spec: TPTP.AnnotatedFormula) extends RuntimeException
+  private[this] class UnspecifiedLogicException extends RuntimeException
+  private[this] class UnsupportedLogicException(val logic: String) extends RuntimeException
+
 }
