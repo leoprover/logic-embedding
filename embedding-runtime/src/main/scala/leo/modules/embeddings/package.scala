@@ -1,9 +1,10 @@
 package leo
 package modules
 
-import java.util.logging.Logger
 import leo.datastructures.TPTP
-import TPTP.AnnotatedFormula
+import leo.datastructures.TPTP.AnnotatedFormula
+
+import java.util.logging.Logger
 
 
 package object embeddings {
@@ -11,13 +12,14 @@ package object embeddings {
 
   trait Embedding {
     type OptionType <: Enumeration
+    @throws[EmbeddingException]("if the embedding procedure could not be executed successfully.")
     def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[OptionType#Value]): Seq[AnnotatedFormula]
     def embeddingParameter: OptionType
   }
 
   final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
   final def serializeType(typ: TPTP.THF.Type): String = {
-    import TPTP.THF.{FunctionTerm, BinaryFormula, FunTyConstructor, SumTyConstructor, ProductTyConstructor}
+    import TPTP.THF._
 
     typ match {
       case FunctionTerm(f, Seq()) => encodeDollarName(f)
@@ -58,7 +60,7 @@ package object embeddings {
   }
 
   protected[embeddings] def parseTupleRHS(tupleElements: Seq[TPTP.THF.Formula]): (Option[String], Map[String, String]) = {
-    import TPTP.THF.{FunctionTerm, BinaryFormula}
+    import TPTP.THF.{BinaryFormula, FunctionTerm}
     var default: Option[String] = None
     var mapping: Map[String, String] = Map.empty
 
@@ -87,7 +89,7 @@ package object embeddings {
   }
 
   protected[embeddings] def parseTupleListRHS(tupleElements: Seq[TPTP.THF.Formula]): (Seq[String], Map[TPTP.THF.Formula, Seq[String]]) = {
-    import TPTP.THF.{FunctionTerm, Tuple, BinaryFormula}
+    import TPTP.THF.{BinaryFormula, FunctionTerm, Tuple}
     var default: Seq[String] = Seq.empty
     var mapping: Map[TPTP.THF.Formula, Seq[String]] = Map.empty
 
