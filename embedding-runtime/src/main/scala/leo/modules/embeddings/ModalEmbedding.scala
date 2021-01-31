@@ -365,8 +365,6 @@ object ModalEmbedding extends Embedding {
         } else {
           if (polymorphic) polyIndexedSyntacticAxiomTable else indexedSyntacticAxiomTable
         }
-        println(modalOperators.toString())
-        println(state(MODALS).toString())
         modalOperators foreach { case (ty, idxs) =>
           idxs foreach { idx =>
             val modalSystem = state(MODALS).apply(idx)
@@ -1056,7 +1054,12 @@ object ModalEmbedding extends Embedding {
                 case "$modalities" => val (default, map) = parseListRHS(rhs)
                   if (default.nonEmpty) state.setDefault(MODALS, default)
                   map foreach { case (name, modalspec) =>
-                    if (modalspec.nonEmpty) state(MODALS) += (name -> modalspec)
+                    val realIndex = name match {
+                      case THF.BinaryFormula(THF.App, THF.FunctionTerm(box, Seq()), index) if box.startsWith("$box") => index
+                      case THF.FunctionTerm(box, Seq(index)) if box.startsWith("$box") => index
+                      case _ => throw new EmbeddingException(s"Modality specification did not start with $$box ... := ...")
+                    }
+                    if (modalspec.nonEmpty) state(MODALS) += (realIndex -> modalspec)
                   }
                 case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
               }
