@@ -2,11 +2,11 @@ package leo.modules
 
 import leo.datastructures.TPTP
 import leo.datastructures.TPTP.{AnnotatedFormula, Problem}
-import leo.modules.embeddings.Embedding
+import leo.modules.embeddings.{Embedding, EmbeddingException}
 import leo.modules.input.TPTPParser
 
-import java.io.{File, FileNotFoundException, PrintWriter}
 import scala.io.Source
+import java.io.{File, FileNotFoundException, PrintWriter}
 
 object EmbeddingApp {
   final val name: String = "embed"
@@ -67,6 +67,9 @@ object EmbeddingApp {
         outfile.get.println(result)
         outfile.get.flush()
       } catch {
+        case e: EmbeddingException =>
+          println(s"An error occurred during embedding: ${e.getMessage}")
+          error = true
         case e: IllegalArgumentException =>
           println(e.getMessage)
           usage()
@@ -89,6 +92,10 @@ object EmbeddingApp {
           error = true
         case e: TPTPParser.TPTPParseException =>
           println(s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
+          error = true
+        case e: Throwable =>
+          println(s"Unexpected error. ${e.getMessage}")
+          println("This is considered an implementation error; please report this!")
           error = true
       } finally {
         infile.foreach(_.close())
@@ -135,7 +142,7 @@ object EmbeddingApp {
   }
 
   private[this] final def usage(): Unit = {
-    println(s"usage: $name [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem file> [<output file>]")
+    println(s"usage: $name [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem file> [<output file>] [--version] [--help]")
     println(
       """
         | <problem file> can be either a file name or '-' (without parentheses) for stdin.
@@ -153,6 +160,12 @@ object EmbeddingApp {
         |  -s <spec>=<value>
         |     If <problem file> does not contain a logic specification statement, explicitly set
         |     semantics of <spec> to <value>. In this case, -l needs to be provided.
+        |
+        |  --version
+        |     Prints the version number of the executable and terminates.
+        |
+        |  --help
+        |     Prints this description and terminates.
         |""".stripMargin)
   }
 
@@ -172,7 +185,6 @@ object EmbeddingApp {
             case Seq(l, r) => specs = specs + (l -> r)
             case _ => throw new IllegalArgumentException(s"Malformed argument to -s option: '$eq'")
           }
-          specs
         case Seq(f) =>
           args0 = Seq.empty
           inputFileName = f
