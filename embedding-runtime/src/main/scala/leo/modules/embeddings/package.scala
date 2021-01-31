@@ -9,17 +9,11 @@ import TPTP.AnnotatedFormula
 package object embeddings {
   class EmbeddingException(message: String) extends RuntimeException(message)
 
-  trait Embedding[OptionType] {
-    def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[OptionType]): Seq[AnnotatedFormula]
+  trait Embedding {
+    type OptionType <: Enumeration
+    def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[OptionType#Value]): Seq[AnnotatedFormula]
+    def embeddingParameter: OptionType
   }
-
-  object ModalEmbeddingOption extends Enumeration {
-    type ModalEmbeddingOption = Value
-    final val MONOMORPHIC, POLYMORPHIC,
-              MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-              DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL = Value
-  }
-
 
   final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
   final def serializeType(typ: TPTP.THF.Type): String = {

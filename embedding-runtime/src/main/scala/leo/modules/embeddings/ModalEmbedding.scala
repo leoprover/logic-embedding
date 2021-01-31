@@ -4,12 +4,21 @@ package embeddings
 
 import datastructures.{FlexMap, TPTP}
 import TPTP.{AnnotatedFormula, THF}
-import ModalEmbeddingOption._
 
-object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
+object ModalEmbedding extends Embedding {
+  object ModalEmbeddingOption extends Enumeration {
+    // Hidden on purpose, to allow distinction between the object itself and its values.
+    //    type ModalEmbeddingOption = Value
+    final val MONOMORPHIC, POLYMORPHIC,
+    MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
+    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL = Value
+  }
 
-  final def apply(problem: Seq[AnnotatedFormula],
-                  embeddingOptions: Set[ModalEmbeddingOption] = Set.empty): Seq[AnnotatedFormula] =
+  override type OptionType = ModalEmbeddingOption.type
+  override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
+
+  override final def apply(problem: Seq[AnnotatedFormula],
+                  embeddingOptions: Set[ModalEmbeddingOption.Value] = Set.empty): Seq[AnnotatedFormula] =
     new ModalEmbeddingImpl(problem, embeddingOptions).apply()
 
   /////////////////////////////////////////////////////////////////////////////////
@@ -17,7 +26,8 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class ModalEmbeddingImpl(problem: Seq[AnnotatedFormula], embeddingOptions: Set[ModalEmbeddingOption]) {
+  private[this] final class ModalEmbeddingImpl(problem: Seq[AnnotatedFormula], embeddingOptions: Set[ModalEmbeddingOption.Value]) {
+    import ModalEmbeddingOption._
 
     ///////////////////////////////////////////////////////////////////
     private final val state = FlexMap.apply()
@@ -291,6 +301,7 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
     private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
     private[this] def multiModal(index: THF.Formula, typ: THF.Type): Unit = {
       val set = modalOperators.getOrElse(typ, Set.empty)
+      val index0 = THF.BinaryFormula(THF.App, THF.FunctionTerm("$box", Seq.empty), index)
       modalOperators += (typ -> (set + index))
     }
 
@@ -354,6 +365,8 @@ object ModalEmbedding extends Embedding[ModalEmbeddingOption] {
         } else {
           if (polymorphic) polyIndexedSyntacticAxiomTable else indexedSyntacticAxiomTable
         }
+        println(modalOperators.toString())
+        println(state(MODALS).toString())
         modalOperators foreach { case (ty, idxs) =>
           idxs foreach { idx =>
             val modalSystem = state(MODALS).apply(idx)

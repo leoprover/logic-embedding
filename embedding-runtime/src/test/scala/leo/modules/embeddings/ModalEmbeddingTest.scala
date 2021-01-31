@@ -6,7 +6,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import java.io.File
 
 import leo.modules.input.TPTPParser
-import ModalEmbeddingOption._
+import ModalEmbedding.ModalEmbeddingOption._
 
 class ModalEmbeddingTest  extends AnyFunSuite {
   private val testFiles: Seq[File] = new File(getClass.getResource("/").getPath).listFiles(_.isFile).toSeq
