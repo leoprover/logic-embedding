@@ -408,13 +408,11 @@ object ModalEmbedding extends Embedding {
         if (quantifierTypes.nonEmpty) {
           if (quantifierTypes.exists(ty => state(DOMAIN)(ty.pretty) != DOMAIN_CONSTANT))
             result.appendAll(polyIndexedExistsInWorldTPTPDef()) // define poly eiw
-          quantifierTypes foreach { ty =>
-            if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
-              if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL)
+          if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL) {
+            quantifierTypes foreach { ty =>
+              if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE)
                 result.appendAll(polyIndexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw with that type
-            }
-            if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
-              if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL)
+              if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING)
                 result.appendAll(polyIndexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw with that type
             }
           }
@@ -424,12 +422,10 @@ object ModalEmbedding extends Embedding {
           if (state(DOMAIN)(ty.pretty) != DOMAIN_CONSTANT) {
             result.appendAll(indexedExistsInWorldTPTPDef(ty)) // define eiw with standard axioms
           }
-          if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
-            if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL)
+          if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL) {
+            if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE)
               result.appendAll(indexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw
-          }
-          if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
-            if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL)
+            else if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING)
               result.appendAll(indexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw
           }
         }
@@ -444,7 +440,13 @@ object ModalEmbedding extends Embedding {
             result.appendAll(polyIndexedVaryQuantifierTPTPDef())
           if (domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) {
             // in case of syntactical embedding: write restrictions using CBF resp. BF now.
-            // TODO
+            quantifierTypes foreach { ty =>
+              if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
+                result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
+              } else if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
+                result.appendAll(indexedBarcanFormulaTPTPDef(ty))
+              }
+            }
           }
         }
       } else {
@@ -455,9 +457,9 @@ object ModalEmbedding extends Embedding {
             if (domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) {
               // in case of syntactical embedding: write restrictions using CBF resp. BF now.
               if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
-
+                result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
               } else if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
-
+                result.appendAll(indexedBarcanFormulaTPTPDef(ty))
               }
             }
           }
@@ -613,11 +615,39 @@ object ModalEmbedding extends Embedding {
     private[this] def indexedDecreasingExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       if (isMultiModal) {
-        modalOperators.keySet.map(mrelTy => annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel_${serializeType(mrelTy)} @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")).toSeq
+        modalOperators.keySet.map(mrelTy => annotatedTHF(s"thf(eiw_${serializeType(typ)}_decr, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel_${serializeType(mrelTy)} @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")).toSeq
       } else {
         Seq(
           annotatedTHF(s"thf(eiw_${serializeType(typ)}_decr, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V))).")
         )
+      }
+    }
+
+    private[this] def indexedConverseBarcanFormulaTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.{annotatedTHF, thf}
+      if (isMultiModal) {
+        modalOperators.keySet.map { modalityTy =>
+          val box = typeToBoxName(modalityTy)
+          val formula = convertFormula(thf(s"($box @ I @ (![X:${typ.pretty}]: (P @ X))) => (![X:${typ.pretty}]: ($box @ I @ (P @ X)))")).pretty
+          annotatedTHF(s"thf(cbf_${serializeType(typ)}_${serializeType(modalityTy)}, axiom, ![I: ${modalityTy.pretty}, P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula))).")
+        }.toSeq
+      } else {
+        val formula = convertFormula(thf(s"($$box @ (![X:${typ.pretty}]: (P @ X))) => (![X:${typ.pretty}]: ($$box @ (P @ X)))")).pretty
+        Seq(annotatedTHF(s"thf(cbf_${serializeType(typ)}, axiom, ![P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula)))."))
+      }
+    }
+
+    private[this] def indexedBarcanFormulaTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.{annotatedTHF, thf}
+      if (isMultiModal) {
+       modalOperators.keySet.map { modalityTy =>
+         val box = typeToBoxName(modalityTy)
+         val formula = convertFormula(thf(s"(![X:${typ.pretty}]: ($box @ I @ (P @ X))) => ($box @ I @ (![X:${typ.pretty}]: (P @ X)))")).pretty
+         annotatedTHF(s"thf(bf_${serializeType(typ)}_${serializeType(modalityTy)}, axiom, ![I: ${modalityTy.pretty}, P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula))).")
+       }.toSeq
+      } else {
+        val formula = convertFormula(thf(s"(![X:${typ.pretty}]: ($$box @ (P @ X))) => ($$box @ (![X:${typ.pretty}]: (P @ X)))")).pretty
+        Seq(annotatedTHF(s"thf(bf_${serializeType(typ)}, axiom, ![P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula)))."))
       }
     }
 
@@ -653,7 +683,6 @@ object ModalEmbedding extends Embedding {
       }
     }
 
-//    private def isModalAxiomName(name: String): Boolean = name.startsWith("$modal_axiom_")
     lazy val semanticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.annotatedTHF
       Map(
