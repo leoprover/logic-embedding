@@ -205,11 +205,6 @@ object ModalEmbedding extends Embedding {
     private def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
       val name = connective match {
         case THF.~ => "mnot"
-//        case THF.!! => "mforall"
-//        case THF.?? => "mexists"
-//        case THF.@@+ => "mchoice"
-//        case THF.@@- => "mdesc"
-//        case THF.@= => "meq"
         case THF.Eq => "meq"
         case THF.Neq => "mneq"
         case THF.<=> => "mequiv"
@@ -223,9 +218,6 @@ object ModalEmbedding extends Embedding {
         case THF.App => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
         case THF.:= => throw new EmbeddingException(s"Unexpected assignment operator used as connective.")
         case _ => throw new EmbeddingException(s"Unexpected type constructor used as connective: '${connective.pretty}'")
-        //      case THF.FunTyConstructor => ???
-        //      case THF.ProductTyConstructor => ???
-        //      case THF.SumTyConstructor => ???
       }
       THF.FunctionTerm(name, Seq.empty)
     }
@@ -352,10 +344,14 @@ object ModalEmbedding extends Embedding {
             if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mlocalTPTPDef())
           case CONSEQUENCE_LOCAL =>
             result.appendAll(mlocalTPTPDef())
-            if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_GLOBAL) || modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL) result.appendAll(mglobalTPTPDef())
+            if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_GLOBAL) ||
+              modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL ||
+              domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) result.appendAll(mglobalTPTPDef())
         }
         case None => // Add only those used
-          if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_GLOBAL) || modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL) result.appendAll(mglobalTPTPDef())
+          if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_GLOBAL) ||
+            modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL ||
+            domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) result.appendAll(mglobalTPTPDef())
           if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mlocalTPTPDef())
       }
       /////////////////////////////////////////////////////////////
@@ -406,17 +402,20 @@ object ModalEmbedding extends Embedding {
         }
       }
       /////////////////////////////////////////////////////////////
-      // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary)
+      // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary and semantic embedding)
+      // In case of syntactical embedding, we need to have the quantifier symbols defined first.
       if (polymorphic) {
         if (quantifierTypes.nonEmpty) {
           if (quantifierTypes.exists(ty => state(DOMAIN)(ty.pretty) != DOMAIN_CONSTANT))
             result.appendAll(polyIndexedExistsInWorldTPTPDef()) // define poly eiw
           quantifierTypes foreach { ty =>
             if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
-              result.appendAll(polyIndexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw with that type
+              if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL)
+                result.appendAll(polyIndexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw with that type
             }
             if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
-              result.appendAll(polyIndexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw with that type
+              if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL)
+                result.appendAll(polyIndexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw with that type
             }
           }
         }
@@ -426,10 +425,12 @@ object ModalEmbedding extends Embedding {
             result.appendAll(indexedExistsInWorldTPTPDef(ty)) // define eiw with standard axioms
           }
           if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
-            result.appendAll(indexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw
+            if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL)
+              result.appendAll(indexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw
           }
           if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
-            result.appendAll(indexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw
+            if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL)
+              result.appendAll(indexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw
           }
         }
       }
@@ -441,11 +442,25 @@ object ModalEmbedding extends Embedding {
             result.appendAll(polyIndexedConstQuantifierTPTPDef())
           if (quantifierTypes.exists(ty => state(DOMAIN)(ty.pretty) != DOMAIN_CONSTANT))
             result.appendAll(polyIndexedVaryQuantifierTPTPDef())
+          if (domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) {
+            // in case of syntactical embedding: write restrictions using CBF resp. BF now.
+            // TODO
+          }
         }
       } else {
         quantifierTypes foreach { ty =>
           if (state(DOMAIN)(ty.pretty) == DOMAIN_CONSTANT) result.appendAll(indexedConstQuantifierTPTPDef(ty))
-          else result.appendAll(indexedVaryQuantifierTPTPDef(ty))
+          else {
+            result.appendAll(indexedVaryQuantifierTPTPDef(ty))
+            if (domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) {
+              // in case of syntactical embedding: write restrictions using CBF resp. BF now.
+              if (state(DOMAIN)(ty.pretty) == DOMAIN_CUMULATIVE) {
+
+              } else if (state(DOMAIN)(ty.pretty) == DOMAIN_DECREASING) {
+
+              }
+            }
+          }
         }
       }
       /////////////////////////////////////////////////////////////
