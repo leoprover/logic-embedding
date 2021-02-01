@@ -318,7 +318,6 @@ object ModalEmbedding extends Embedding {
     private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
     private[this] def multiModal(index: THF.Formula, typ: THF.Type): Unit = {
       val set = modalOperators.getOrElse(typ, Set.empty)
-      val index0 = THF.BinaryFormula(THF.App, THF.FunctionTerm("$box", Seq.empty), index)
       modalOperators += (typ -> (set + index))
     }
 
