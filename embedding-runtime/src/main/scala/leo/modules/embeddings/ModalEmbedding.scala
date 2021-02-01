@@ -17,6 +17,23 @@ object ModalEmbedding extends Embedding {
   override type OptionType = ModalEmbeddingOption.type
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
+  private[this] final val defaultConstantSpec = "$rigid"
+  private[this] final val defaultQuantificationSpec = "$constant"
+  private[this] final val defaultConsequenceSpec = "$global"
+  private[this] final val defaultModalitiesSpec = "$modal_system_K"
+  override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated = {
+    import modules.input.TPTPParser.annotatedTHF
+    val spec: StringBuilder = new StringBuilder
+    spec.append("thf(logic_spec, logic, (")
+    spec.append("$modal := [")
+    spec.append("$constants := "); spec.append(specs.getOrElse("$constants", defaultConstantSpec)); spec.append(",")
+    spec.append("$quantification := "); spec.append(specs.getOrElse("$quantification", defaultQuantificationSpec)); spec.append(",")
+    spec.append("$consequence := "); spec.append(specs.getOrElse("$consequence", defaultConsequenceSpec)); spec.append(",")
+    spec.append("$modalities := "); spec.append(specs.getOrElse("$modalities", defaultModalitiesSpec))
+    spec.append("] )).")
+    annotatedTHF(spec.toString)
+  }
+
   override final def apply(problem: Seq[AnnotatedFormula],
                   embeddingOptions: Set[ModalEmbeddingOption.Value] = Set.empty): Seq[AnnotatedFormula] =
     new ModalEmbeddingImpl(problem, embeddingOptions).apply()

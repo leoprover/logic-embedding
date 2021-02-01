@@ -15,6 +15,7 @@ package object embeddings {
     @throws[EmbeddingException]("if the embedding procedure could not be executed successfully.")
     def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[OptionType#Value]): Seq[AnnotatedFormula]
     def embeddingParameter: OptionType
+    def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated
   }
 
   final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
