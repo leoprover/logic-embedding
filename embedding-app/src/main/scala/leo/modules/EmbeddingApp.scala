@@ -121,6 +121,9 @@ object EmbeddingApp {
     if (logicSpec.isDefined) {
       sb.append(s"%%% Logic specification was: ${logicSpec.get.pretty}\n")
     }
+    if (parameterNames.nonEmpty) {
+      sb.append(s"%%% Transformation parameters: ${parameterNames.mkString(",")}\n")
+    }
     sb.append("\n")
     sb.append(problem.pretty)
     sb.toString()
