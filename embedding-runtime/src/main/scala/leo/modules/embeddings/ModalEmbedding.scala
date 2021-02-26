@@ -707,22 +707,11 @@ object ModalEmbedding extends Embedding {
         )),
         "$modal_axiom_CD" -> Some(annotatedTHF(
           s"thf(mrel_functional, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ W @ U) & (mrel @ W @ V)) => (U = V)))."
-        ))//,
-//        "$modal_axiom_GL" -> Some(annotatedTHF(
-//          s"thf(mrel_gl, axiom, ![W:$worldTypeName]: ())."
-//        )),
-//        "$modal_axiom_GRZ" -> Some(annotatedTHF(
-//          s"thf(mrel_grz, axiom, ![W:$worldTypeName]: ())."
-//        )),
-//        "$modal_axiom_H" -> Some(annotatedTHF(
-//          s"thf(mrel_h, axiom, ![W:$worldTypeName]: ())."
-//        )),
-//        "$modal_axiom_M" -> Some(annotatedTHF(
-//          s"thf(mrel_m, axiom, ![W:$worldTypeName]: ())."
-//        )),
-//        "$modal_axiom_G" -> Some(annotatedTHF(
-//          s"thf(mrel_g, axiom, ![W:$worldTypeName]: ())."
-//        ))
+        )),
+        "$modal_axiom_S5U" -> Some(annotatedTHF(
+          s"thf(mrel_universal, axiom, ![W:$worldTypeName,V:$worldTypeName]: (mrel @ W @ V))."
+        ))
+        // TODO: More axiom schemes
       )
     }
     lazy val syntacticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
@@ -829,22 +818,11 @@ object ModalEmbedding extends Embedding {
         )),
         "$modal_axiom_CD" -> Some((idx, typ) => annotatedTHF(
           s"thf('mrel_${serializeType(typ)}_${idx.pretty}_functional', axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ U) & (mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ V)) => (U = V)))."
-        ))//,
-        //        "$modal_axiom_GL" -> Some(annotatedTHF(
-        //          s"thf(mrel_gl, axiom, ![W:$worldTypeName]: ())."
-        //        )),
-        //        "$modal_axiom_GRZ" -> Some(annotatedTHF(
-        //          s"thf(mrel_grz, axiom, ![W:$worldTypeName]: ())."
-        //        )),
-        //        "$modal_axiom_H" -> Some(annotatedTHF(
-        //          s"thf(mrel_h, axiom, ![W:$worldTypeName]: ())."
-        //        )),
-        //        "$modal_axiom_M" -> Some(annotatedTHF(
-        //          s"thf(mrel_m, axiom, ![W:$worldTypeName]: ())."
-        //        )),
-        //        "$modal_axiom_G" -> Some(annotatedTHF(
-        //          s"thf(mrel_g, axiom, ![W:$worldTypeName]: ())."
-        //        ))
+        )),
+        "$modal_axiom_S5U" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${serializeType(typ)}_${idx.pretty}_universal', axiom, ![W:$worldTypeName,V:$worldTypeName]: (mrel_${serializeType(typ)} @ ${idx.pretty} @ W @ V))."
+        ))
+        // TODO: More axiom schemes
       )
     }
     private[this] def typeToBoxName(typ: THF.Type): String = {
@@ -1006,22 +984,11 @@ object ModalEmbedding extends Embedding {
         )),
         "$modal_axiom_CD" -> Some((idx, typ) => annotatedTHF(
           s"thf('mrel_${idx.pretty}_functional', axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ ${typ.pretty} @ ${idx.pretty} @ W @ U) & (mrel @ ${typ.pretty} @ ${idx.pretty} @ W @ V)) => (U = V)))."
-        ))//,
-        //        "$modal_axiom_GL" -> Some(annotatedTHF(
-        //          s"thf(mrel_gl, axiom, ![W:$worldTypeName]: ())."
-        //        )),
-        //        "$modal_axiom_GRZ" -> Some(annotatedTHF(
-        //          s"thf(mrel_grz, axiom, ![W:$worldTypeName]: ())."
-        //        )),
-        //        "$modal_axiom_H" -> Some(annotatedTHF(
-        //          s"thf(mrel_h, axiom, ![W:$worldTypeName]: ())."
-        //        )),
-        //        "$modal_axiom_M" -> Some(annotatedTHF(
-        //          s"thf(mrel_m, axiom, ![W:$worldTypeName]: ())."
-        //        )),
-        //        "$modal_axiom_G" -> Some(annotatedTHF(
-        //          s"thf(mrel_g, axiom, ![W:$worldTypeName]: ())."
-        //        ))
+        )),
+        "$modal_axiom_S5U" -> Some((idx, typ) => annotatedTHF(
+          s"thf('mrel_${idx.pretty}_universal', axiom, ![W:$worldTypeName,V:$worldTypeName]: (mrel @ ${typ.pretty} @ ${idx.pretty} @ W @ V))."
+        ))
+        // TODO: More axiom schemes
       )
     }
     lazy val polyIndexedSyntacticAxiomTable: Map[String, Option[Function2[THF.Formula, THF.Type, TPTP.AnnotatedFormula]]] = indexedSyntacticAxiomTable
@@ -1043,12 +1010,13 @@ object ModalEmbedding extends Embedding {
       "$modal_system_B" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_B"),
       "$modal_system_S4" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4"),
       "$modal_system_S5" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_5"),
-      "$modal_system_S5U" -> Seq(),
+      "$modal_system_S5U" -> Seq("$modal_axiom_S5U"),
       "$modal_system_K4W" -> Seq("$modal_axiom_K", "$modal_axiom_GL"),
       "$modal_system_4_1" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_H"),
       "$modal_system_4_2" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_M"),
       "$modal_system_4_3" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4" ,"$modal_axiom_G"),
       "$modal_system_Grz" -> Seq("$modal_axiom_K", "$modal_axiom_Grz"),
+      "$modal_system_GL" -> Seq("$modal_axiom_K", "$modal_axiom_GL")
     )
 
     //////////////////////////////////////////////////////////////////////
