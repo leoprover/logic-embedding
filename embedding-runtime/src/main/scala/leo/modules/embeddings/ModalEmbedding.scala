@@ -124,6 +124,8 @@ object ModalEmbedding extends Embedding {
       formula match {
         case THF.FunctionTerm("$box", Seq()) => mbox
         case THF.FunctionTerm("$dia", Seq()) => mdia
+        case THF.FunctionTerm("$true", Seq()) => THF.FunctionTerm("mtrue", Seq.empty)
+        case THF.FunctionTerm("$false", Seq()) => THF.FunctionTerm("mfalse", Seq.empty)
 
         case THF.FunctionTerm(f, args) =>
           val convertedArgs = args.map(convertFormula)
@@ -515,11 +517,15 @@ object ModalEmbedding extends Embedding {
     private[this] def connectivesTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
+        annotatedTHF(s"thf(mtrue_type, type , ( mtrue: ($worldTypeName>$$o)) )."),
+        annotatedTHF(s"thf(mfalse_type, type , ( mfalse: ($worldTypeName>$$o)) )."),
         annotatedTHF(s"thf(mnot_type, type , ( mnot: ($worldTypeName>$$o)>$worldTypeName>$$o) )."),
         annotatedTHF(s"thf(mand_type, type , ( mand: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
         annotatedTHF(s"thf(mor_type, type , ( mor: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
         annotatedTHF(s"thf(mimplies_type, type , ( mimplies: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
         annotatedTHF(s"thf(mequiv_type, type , ( mequiv: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
+        annotatedTHF(s"thf(mtrue_def, definition , ( mtrue = (^ [W:$worldTypeName] : $$true)))."),
+        annotatedTHF(s"thf(mfalse_def, definition , ( mfalse = (^ [W:$worldTypeName] : $$false)))."),
         annotatedTHF(s"thf(mnot_def, definition , ( mnot = (^ [A:$worldTypeName>$$o,W:$worldTypeName] : ~(A@W))))."),
         annotatedTHF(s"thf(mand_def, definition , ( mand = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) & (B@W) ))))."),
         annotatedTHF(s"thf(mor_def, definition , ( mor = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) | (B@W) ))))."),
