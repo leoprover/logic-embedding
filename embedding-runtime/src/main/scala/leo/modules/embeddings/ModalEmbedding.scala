@@ -17,6 +17,9 @@ object ModalEmbedding extends Embedding {
   override type OptionType = ModalEmbeddingOption.type
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
+  override final def name: String = "modal"
+  override final def version: String = "1.0"
+
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
   private[this] final val defaultConsequenceSpec = "$global"
