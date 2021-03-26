@@ -142,6 +142,14 @@ object ModalEmbedding extends Embedding {
           val convertedBody: TPTP.THF.Formula = convertFormula(body)
           THF.BinaryFormula(App, convertedConnective, convertedBody)
 
+        // TPTP-defined predicates
+        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm(f, Seq()), left), right) if Seq("$less", "$lesseq", "$greater", "$greatereq").contains(f) => {
+          import modules.input.TPTPParser.thf
+          val convertedLeft: TPTP.THF.Formula = convertFormula(left)
+          val convertedRight: TPTP.THF.Formula = convertFormula(right)
+          thf(s"^[W:$worldTypeName]: ($f @ (${convertedLeft.pretty}) @ (${convertedRight.pretty}))")
+        }
+
         // polymorphic box and diamond cases
         case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$box_P", Seq()), tyArg), index) =>
           mboxIndexed(index, tyArg)
