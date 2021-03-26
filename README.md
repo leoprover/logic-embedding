@@ -11,7 +11,7 @@ Currently, only modal logics is supported. More logics will be added soon.
 
 ## Usage
 ```
-usage: embed [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem file> [<output file>]
+usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem file> [<output file>]
 
  <problem file> can be either a file name or '-' (without parentheses) for stdin.
  If <output file> is specified, the result is written to <output file>, otherwise to stdout.
@@ -39,5 +39,5 @@ usage: embed [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem file> [<
 
 
 ## Notes
-This is essentially a re-implementation of Tobias Gleißner's embedding tool at the leoprover/embed_modal repository.
+The modal logic embedding is a modified and consolidated re-implementation of Tobias Gleißner's embedding tool at the leoprover/embed_modal repository.
 This version makes use of the `scala-tptp-parser` library from leoprover/scala-tptp-parser that is much faster, in particular for larger input problems.
