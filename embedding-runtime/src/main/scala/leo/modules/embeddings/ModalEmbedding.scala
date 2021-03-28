@@ -18,7 +18,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.0"
+  override final def version: String = "1.1"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -121,12 +121,64 @@ object ModalEmbedding extends Embedding {
 
     private def convertFormula(formula: TPTP.THF.Formula): TPTP.THF.Formula = {
       import TPTP.THF.App
+      import modules.input.TPTPParser.thf
+
       formula match {
+        /* ######################################### */
+        /* Special operators introduced by the embedding */
         case THF.FunctionTerm("$box", Seq()) => mbox
         case THF.FunctionTerm("$dia", Seq()) => mdia
-        case THF.FunctionTerm("$true", Seq()) => THF.FunctionTerm("mtrue", Seq.empty)
-        case THF.FunctionTerm("$false", Seq()) => THF.FunctionTerm("mfalse", Seq.empty)
 
+        // Non-poly modal operators
+        case THF.BinaryFormula(App, THF.FunctionTerm("$box_int", Seq()), right) =>
+          right match {
+            case nt@THF.NumberTerm(TPTP.Integer(_)) => mboxIndexed(nt, THF.FunctionTerm("$int", Seq.empty))
+            case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
+          }
+        case THF.BinaryFormula(App, THF.FunctionTerm("$dia_int", Seq()), right) =>
+          right match {
+            case nt@THF.NumberTerm(TPTP.Integer(_)) => mdiaIndexed(nt, THF.FunctionTerm("$int", Seq.empty))
+            case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
+          }
+        case THF.BinaryFormula(App, THF.FunctionTerm("$box_i", Seq()), right) =>
+          right match {
+            case ft@THF.FunctionTerm(_, Seq()) => mboxIndexed(ft, THF.FunctionTerm("$i", Seq.empty))
+            case _ => throw new EmbeddingException(s"Index of $$box_i was not a symbol/functor, but '${right.pretty}'.")
+          }
+
+        case THF.BinaryFormula(App, THF.FunctionTerm("$dia_i", Seq()), right) =>
+          right match {
+            case ft@THF.FunctionTerm(_, Seq()) => mdiaIndexed(ft, THF.FunctionTerm("$i", Seq.empty))
+            case _ => throw new EmbeddingException(s"Index of $$dia_i was not a symbol/functor, but '${right.pretty}'.")
+          }
+
+        // polymorphic box and diamond cases
+        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$box_P", Seq()), tyArg), index) =>
+          mboxIndexed(index, tyArg)
+        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$dia_P", Seq()), tyArg), index) =>
+          mdiaIndexed(index, tyArg)
+
+        /* ######################################### */
+        /* TPTP defined predicates/constants that need to be handled specially*/
+        // Nullary: $true and $false -> (^[W:mworld]: $true) resp. (^[W:mworld]: $false)
+        case THF.FunctionTerm(f, Seq()) if Seq("$true", "$false").contains(f) =>
+          thf(s"^[W: $worldTypeName]: $f")
+
+        // Binary: $less, $lesseq, $greater, $greatereq -> (^[W:mworld]: $true) resp. (^[W:mworld]: $false)
+          // This will not work for partially applied function expressions, e.g. (f @ $greater).
+          // but the embedding will be much more complicated when we support this, as $greater and friends
+          // are ad-hoc polymorphic and would need to be embedded to ^[X:T, Y:T, W:mworld]: ($greater @ X @ Y)
+          // but we don't know what T is supposed to be. And just embedding $greater to ^[W:mworld]: $greater
+          // will not be type-correct.
+        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm(f, Seq()), left), right)
+          if Seq("$less", "$lesseq", "$greater", "$greatereq").contains(f) =>
+
+          val convertedLeft: TPTP.THF.Formula = convertFormula(left)
+          val convertedRight: TPTP.THF.Formula = convertFormula(right)
+          thf(s"^[W:$worldTypeName]: ($f @ (${convertedLeft.pretty}) @ (${convertedRight.pretty}))")
+
+        /* ######################################### */
+        /* Standard cases: Recurse embedding. */
         case THF.FunctionTerm(f, args) =>
           val convertedArgs = args.map(convertFormula)
           THF.FunctionTerm(f, convertedArgs)
@@ -142,48 +194,10 @@ object ModalEmbedding extends Embedding {
           val convertedBody: TPTP.THF.Formula = convertFormula(body)
           THF.BinaryFormula(App, convertedConnective, convertedBody)
 
-        // TPTP-defined predicates
-        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm(f, Seq()), left), right) if Seq("$less", "$lesseq", "$greater", "$greatereq").contains(f) => {
-          import modules.input.TPTPParser.thf
+        case THF.BinaryFormula(App, left, right) =>
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
-          thf(s"^[W:$worldTypeName]: ($f @ (${convertedLeft.pretty}) @ (${convertedRight.pretty}))")
-        }
-
-        // polymorphic box and diamond cases
-        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$box_P", Seq()), tyArg), index) =>
-          mboxIndexed(index, tyArg)
-        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$dia_P", Seq()), tyArg), index) =>
-          mdiaIndexed(index, tyArg)
-
-        // Non-poly modal operators or standard application
-        case THF.BinaryFormula(App, left, right) =>
-          left match {
-            case THF.FunctionTerm("$box_int", Seq()) =>
-              right match {
-                case nt@THF.NumberTerm(TPTP.Integer(_)) => mboxIndexed(nt, THF.FunctionTerm("$int", Seq.empty))
-                case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
-              }
-            case THF.FunctionTerm("$dia_int", Seq()) =>
-              right match {
-                case nt@THF.NumberTerm(TPTP.Integer(_)) => mdiaIndexed(nt, THF.FunctionTerm("$int", Seq.empty))
-                case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
-              }
-            case THF.FunctionTerm("$box_i", Seq()) =>
-              right match {
-                case ft@THF.FunctionTerm(_, Seq()) => mboxIndexed(ft, THF.FunctionTerm("$i", Seq.empty))
-                case _ => throw new EmbeddingException(s"Index of $$box_i was not a symbol/functor, but '${right.pretty}'.")
-              }
-            case THF.FunctionTerm("$dia_i", Seq()) =>
-              right match {
-                case ft@THF.FunctionTerm(_, Seq()) => mdiaIndexed(ft, THF.FunctionTerm("$i", Seq.empty))
-                case _ => throw new EmbeddingException(s"Index of $$dia_i was not a symbol/functor, but '${right.pretty}'.")
-              }
-            case _ =>
-              val convertedLeft: TPTP.THF.Formula = convertFormula(left)
-              val convertedRight: TPTP.THF.Formula = convertFormula(right)
-              THF.BinaryFormula(App, convertedLeft, convertedRight)
-          }
+          THF.BinaryFormula(App, convertedLeft, convertedRight)
 
         case THF.BinaryFormula(connective, left, right) =>
           val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
@@ -191,9 +205,9 @@ object ModalEmbedding extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           THF.BinaryFormula(App, THF.BinaryFormula(App, convertedConnective, convertedLeft), convertedRight)
 
-        case THF.ConnectiveTerm(conn) => convertConnective(conn)
+        case THF.ConnectiveTerm(conn) => convertConnective(conn) // TODO
 
-        case c@THF.DefinedTH1ConstantTerm(_) => c
+        case c@THF.DefinedTH1ConstantTerm(_) => c // TODO
 
         case THF.Tuple(elements) =>
           val convertedElements: Seq[TPTP.THF.Formula] = elements.map(convertFormula)
@@ -207,7 +221,7 @@ object ModalEmbedding extends Embedding {
 
         case THF.LetTerm(typing, binding, body) => // This will probably change as the parse tree of LetTerms will still change.
           val convertedTyping: Map[String, TPTP.THF.Type] = typing.map(a => (a._1, convertType(a._2)))
-          val convertedBinding: Seq[(TPTP.THF.Formula, TPTP.THF.Formula)]  = binding.map(a => (convertFormula(a._1), convertFormula(a._2)))
+          val convertedBinding: Seq[(TPTP.THF.Formula, TPTP.THF.Formula)] = binding.map(a => (convertFormula(a._1), convertFormula(a._2)))
           val convertedBody = convertFormula(body)
           THF.LetTerm(convertedTyping, convertedBinding, convertedBody)
         case THF.DistinctObject(_) => formula
@@ -284,7 +298,6 @@ object ModalEmbedding extends Embedding {
     private[this] def mglobal: THF.Formula = THF.FunctionTerm("mglobal", Seq.empty)
     private[this] def mlocal: THF.Formula =  THF.FunctionTerm("mlocal", Seq.empty)
 
-
     private def convertTypeFormula(formula: AnnotatedFormula): AnnotatedFormula = {
       formula match {
         case TPTP.THFAnnotated(name, role, TPTP.THF.Typing(typeName, typ), annotations) =>
@@ -342,11 +355,7 @@ object ModalEmbedding extends Embedding {
       // Then: Introduce mrel (as relation or as collection of relations)
       if (isMultiModal) {
         if (polymorphic) result.append(polyIndexedAccessibilityRelationTPTPDef())
-        else {
-          modalOperators foreach { case (ty, _) =>
-            result.append(indexedAccessibilityRelationTPTPDef(ty))
-          }
-        }
+        else modalOperators foreach { case (ty, _) => result.append(indexedAccessibilityRelationTPTPDef(ty)) }
       } else result.append(simpleAccessibilityRelationTPTPDef())
       /////////////////////////////////////////////////////////////
       // Then: Define mglobal/mlocal
@@ -374,11 +383,7 @@ object ModalEmbedding extends Embedding {
       // Then: Define modal operators
       if (isMultiModal) {
         if (polymorphic) result.appendAll(polyIndexedModalOperatorsTPTPDef())
-        else {
-          modalOperators foreach { case (ty, _) =>
-            result.appendAll(indexedModalOperatorsTPTPDef(ty))
-          }
-        }
+        else modalOperators foreach { case (ty, _) => result.appendAll(indexedModalOperatorsTPTPDef(ty)) }
       } else result.appendAll(simpleModalOperatorsTPTPDef())
       /////////////////////////////////////////////////////////////
       // Then: Give mrel properties (sem/syn)
@@ -525,15 +530,11 @@ object ModalEmbedding extends Embedding {
     private[this] def connectivesTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mtrue_type, type , ( mtrue: ($worldTypeName>$$o)) )."),
-        annotatedTHF(s"thf(mfalse_type, type , ( mfalse: ($worldTypeName>$$o)) )."),
         annotatedTHF(s"thf(mnot_type, type , ( mnot: ($worldTypeName>$$o)>$worldTypeName>$$o) )."),
         annotatedTHF(s"thf(mand_type, type , ( mand: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
         annotatedTHF(s"thf(mor_type, type , ( mor: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
         annotatedTHF(s"thf(mimplies_type, type , ( mimplies: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
         annotatedTHF(s"thf(mequiv_type, type , ( mequiv: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
-        annotatedTHF(s"thf(mtrue_def, definition , ( mtrue = (^ [W:$worldTypeName] : $$true)))."),
-        annotatedTHF(s"thf(mfalse_def, definition , ( mfalse = (^ [W:$worldTypeName] : $$false)))."),
         annotatedTHF(s"thf(mnot_def, definition , ( mnot = (^ [A:$worldTypeName>$$o,W:$worldTypeName] : ~(A@W))))."),
         annotatedTHF(s"thf(mand_def, definition , ( mand = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) & (B@W) ))))."),
         annotatedTHF(s"thf(mor_def, definition , ( mor = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) | (B@W) ))))."),
