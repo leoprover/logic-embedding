@@ -2,7 +2,7 @@ lazy val parserLib = ProjectRef(uri("git://github.com/leoprover/scala-tptp-parse
 
 lazy val commonSettings = Seq(
   organization := "org.leo",
-  scalaVersion := "2.13.4",
+  scalaVersion := "2.13.5",
   scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
@@ -17,7 +17,7 @@ lazy val embedding = (project in file("."))
     version := "1.1",
     name := "logic-embedding",
     description := "A tool for embedding logics into higher-order logic",
-  ).aggregate(runtime, app).dependsOn(parserLib)
+  ).aggregate(runtime, app)
 
 lazy val runtime = (project in file("embedding-runtime"))
 	.settings(
@@ -27,7 +27,7 @@ lazy val runtime = (project in file("embedding-runtime"))
     assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false),
     test in assembly := {},
     assemblyJarName in assembly := s"${name.value}-${version.value}.jar",
-	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.2" % "test"
+	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.5" % "test"
 	).dependsOn(parserLib)
 
 lazy val app = (project in file("embedding-app"))
@@ -39,5 +39,5 @@ lazy val app = (project in file("embedding-app"))
     mainClass in assembly := Some("leo.modules.EmbeddingApp"),
     test in assembly := {},
     assemblyJarName in assembly := s"${name.value}-${version.value}.jar",
-	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.2" % "test"
+	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.5" % "test"
 	).dependsOn(runtime, parserLib)
