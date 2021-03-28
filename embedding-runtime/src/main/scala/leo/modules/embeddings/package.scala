@@ -10,19 +10,6 @@ import java.util.logging.Logger
 package object embeddings {
   class EmbeddingException(message: String) extends RuntimeException(message)
 
-  trait Embedding {
-    type OptionType <: Enumeration
-
-    def name: String
-    def version: String
-
-    @throws[EmbeddingException]("if the embedding procedure could not be executed successfully.")
-    def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[OptionType#Value]): Seq[AnnotatedFormula]
-
-    def embeddingParameter: OptionType
-    def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated
-  }
-
   final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
   final def serializeType(typ: TPTP.THF.Type): String = {
     import TPTP.THF._
