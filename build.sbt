@@ -1,5 +1,3 @@
-lazy val parserLib = ProjectRef(uri("git://github.com/leoprover/scala-tptp-parser#v1.2"), "tptpParser")
-
 lazy val commonSettings = Seq(
   organization := "org.leo",
   scalaVersion := "2.13.5",
@@ -27,8 +25,9 @@ lazy val runtime = (project in file("embedding-runtime"))
     assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false),
     test in assembly := {},
     assemblyJarName in assembly := s"${name.value}-${version.value}.jar",
-	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.5" % "test"
-	).dependsOn(parserLib)
+    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.3",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.5" % "test"
+	)
 
 lazy val app = (project in file("embedding-app"))
 	.settings(
@@ -39,5 +38,6 @@ lazy val app = (project in file("embedding-app"))
     mainClass in assembly := Some("leo.modules.EmbeddingApp"),
     test in assembly := {},
     assemblyJarName in assembly := s"${name.value}-${version.value}.jar",
+    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.3",
 	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.5" % "test"
-	).dependsOn(runtime, parserLib)
+	).dependsOn(runtime)
