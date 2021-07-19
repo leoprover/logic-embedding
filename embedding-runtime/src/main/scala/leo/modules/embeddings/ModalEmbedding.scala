@@ -5,6 +5,8 @@ package embeddings
 import datastructures.{FlexMap, TPTP}
 import TPTP.{AnnotatedFormula, THF}
 
+import scala.collection.immutable.{AbstractSeq, LinearSeq}
+
 object ModalEmbedding extends Embedding {
   object ModalEmbeddingOption extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
@@ -56,7 +58,7 @@ object ModalEmbedding extends Embedding {
     private final val RIGIDITY_RIGID = true
     private final val RIGIDITY_FLEXIBLE = false
     private final val RIGIDITY = state.createKey[String, Boolean]()
-    state(RIGIDITY) += ("$o" -> RIGIDITY_FLEXIBLE)
+    state(RIGIDITY) += ("$o" -> RIGIDITY_FLEXIBLE) // FIXME: rigidity is bound to constants, not types.
 
     private final val CONSEQUENCE_GLOBAL = true
     private final val CONSEQUENCE_LOCAL = false
@@ -125,46 +127,12 @@ object ModalEmbedding extends Embedding {
 
       formula match {
         /* ######################################### */
-        /* Special operators introduced by the embedding */
-        case THF.FunctionTerm("$box", Seq()) => mbox
-        case THF.FunctionTerm("$dia", Seq()) => mdia
-
-        // Non-poly modal operators
-        case THF.BinaryFormula(App, THF.FunctionTerm("$box_int", Seq()), right) =>
-          right match {
-            case nt@THF.NumberTerm(TPTP.Integer(_)) => mboxIndexed(nt, THF.FunctionTerm("$int", Seq.empty))
-            case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
-          }
-        case THF.BinaryFormula(App, THF.FunctionTerm("$dia_int", Seq()), right) =>
-          right match {
-            case nt@THF.NumberTerm(TPTP.Integer(_)) => mdiaIndexed(nt, THF.FunctionTerm("$int", Seq.empty))
-            case _ => throw new EmbeddingException(s"Index of $$box_int was not a number, but '${right.pretty}'.")
-          }
-        case THF.BinaryFormula(App, THF.FunctionTerm("$box_i", Seq()), right) =>
-          right match {
-            case ft@THF.FunctionTerm(_, Seq()) => mboxIndexed(ft, THF.FunctionTerm("$i", Seq.empty))
-            case _ => throw new EmbeddingException(s"Index of $$box_i was not a symbol/functor, but '${right.pretty}'.")
-          }
-
-        case THF.BinaryFormula(App, THF.FunctionTerm("$dia_i", Seq()), right) =>
-          right match {
-            case ft@THF.FunctionTerm(_, Seq()) => mdiaIndexed(ft, THF.FunctionTerm("$i", Seq.empty))
-            case _ => throw new EmbeddingException(s"Index of $$dia_i was not a symbol/functor, but '${right.pretty}'.")
-          }
-
-        // polymorphic box and diamond cases
-        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$box_P", Seq()), tyArg), index) =>
-          mboxIndexed(index, tyArg)
-        case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("$dia_P", Seq()), tyArg), index) =>
-          mdiaIndexed(index, tyArg)
-
-        /* ######################################### */
-        /* TPTP defined predicates/constants that need to be handled specially*/
+        /* TPTP defined constants that need to be handled specially*/
         // Nullary: $true and $false -> (^[W:mworld]: $true) resp. (^[W:mworld]: $false)
         case THF.FunctionTerm(f, Seq()) if Seq("$true", "$false").contains(f) =>
           thf(s"^[W: $worldTypeName]: $f")
 
-        // Binary: $less, $lesseq, $greater, $greatereq -> (^[W:mworld]: $true) resp. (^[W:mworld]: $false)
+        // Binary: $less, $lesseq, $greater, $greatereq -> (^[W:mworld]: ...) as they are rigid constants.
           // This will not work for partially applied function expressions, e.g. (f @ $greater).
           // but the embedding will be much more complicated when we support this, as $greater and friends
           // are ad-hoc polymorphic and would need to be embedded to ^[X:T, Y:T, W:mworld]: ($greater @ X @ Y)
@@ -199,6 +167,7 @@ object ModalEmbedding extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           THF.BinaryFormula(App, convertedLeft, convertedRight)
 
+        /* The following case also subsumes where `connective` is a non-classical connective. */
         case THF.BinaryFormula(connective, left, right) =>
           val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
@@ -229,24 +198,73 @@ object ModalEmbedding extends Embedding {
       }
     }
 
-    private def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
-      val name = connective match {
-        case THF.~ => "mnot"
-        case THF.Eq => "meq"
-        case THF.Neq => "mneq"
-        case THF.<=> => "mequiv"
-        case THF.Impl => "mimplies"
-        case THF.<= => "mif"
-        case THF.<~> => "mniff"
-        case THF.~| => "mnor"
-        case THF.~& => "mnand"
-        case THF.| => "mor"
-        case THF.& => "mand"
+    @inline private[this] def str2Fun(functionName: String): THF.Formula = THF.FunctionTerm(functionName, Seq.empty)
+    private[this] def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
+      connective match {
+        case THF.~ => str2Fun("mnot")
+        case THF.Eq => str2Fun("meq")
+        case THF.Neq => str2Fun("mneq")
+        case THF.<=> => str2Fun("mequiv")
+        case THF.Impl => str2Fun("mimplies")
+        case THF.<= => str2Fun("mif")
+        case THF.<~> => str2Fun("mniff")
+        case THF.~| => str2Fun("mnor")
+        case THF.~& => str2Fun("mnand")
+        case THF.| => str2Fun("mor")
+        case THF.& => str2Fun("mand")
+        /// Non-classical connectives BEGIN
+          // Box operator
+        case THF.NonclassicalBox(index) => index match {
+          case Some(index0) =>
+            val typeOfIndex = getTypeOfIndex(index0)
+            mboxIndexed(index0, typeOfIndex)
+          case None => str2Fun("mbox")
+        }
+        case THF.NonclassicalLongOperator("$box", parameters) => parameters match {
+          case Seq() => str2Fun("mbox")
+          case Seq(Left(index0)) =>
+            val typeOfIndex = getTypeOfIndex(index0)
+            mboxIndexed(index0, typeOfIndex)
+          case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
+        }
+        // Diamond operator
+        case THF.NonclassicalDiamond(index) => index match {
+          case Some(index0) =>
+            val typeOfIndex = getTypeOfIndex(index0)
+            mdiaIndexed(index0, typeOfIndex)
+          case None => str2Fun("mdia")
+        }
+        case THF.NonclassicalLongOperator("$dia", parameters) => parameters match {
+          case Seq() => str2Fun("mdia")
+          case Seq(Left(index0)) =>
+            val typeOfIndex = getTypeOfIndex(index0)
+            mdiaIndexed(index0, typeOfIndex)
+          case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
+        }
+        /// Non-classical connectives END
         case THF.App => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
         case THF.:= => throw new EmbeddingException(s"Unexpected assignment operator used as connective.")
         case _ => throw new EmbeddingException(s"Unexpected type constructor used as connective: '${connective.pretty}'")
       }
-      THF.FunctionTerm(name, Seq.empty)
+    }
+
+    private[this] def getTypeOfIndex(index0: THF.Formula): THF.Type = {
+      index0 match {
+        case ft@THF.FunctionTerm(f, Seq()) if ft.isDefinedFunction => f match {
+          case "$true" | "$false" => str2Fun("$o")
+          case _ => throw new EmbeddingException(s"Unknown defined functor '$f' used as index; type unknown. Please define its type explicitly.")
+        }
+        case THF.FunctionTerm(f, Seq()) =>
+          if (typedSymbolsInOriginalProblem.contains(f)) typedSymbolsInOriginalProblem(f)
+          else throw new EmbeddingException(s"Unknown functor '$f' used as index; type unknown. Please define its type explicitly.")
+        case THF.Variable(name) => ??? // TODO. Find out by recursive term structure
+        case THF.DistinctObject(_) => str2Fun("$i")
+        case THF.NumberTerm(number) => number match {
+          case TPTP.Integer(_) => str2Fun("$int")
+          case _ => throw new EmbeddingException(s"Only integers are allowed as index, but '${number.pretty}' was given.")
+        }
+        case _ => throw new EmbeddingException(s"Only constants are allowed as index, but complex term '${index0.pretty}' was given. Consider using a long form connective instead.")
+      }
     }
 
     private def convertQuantifier(quantifier: TPTP.THF.Quantifier, typ: TPTP.THF.Type, convertedType: TPTP.THF.Type): THF.Formula = {
@@ -280,7 +298,7 @@ object ModalEmbedding extends Embedding {
       THF.FunctionTerm(name, Seq.empty)
     }
 
-    private[this] def mbox: THF.Formula = THF.FunctionTerm("mbox", Seq.empty)
+    @inline private[this] def mbox: THF.Formula = str2Fun("mbox")
     private[this] def mboxIndexed(index: THF.Formula, typ: THF.Type): THF.Formula = {
       // TODO: Switch $int -> otherType here
       multiModal(index, typ)
@@ -300,8 +318,9 @@ object ModalEmbedding extends Embedding {
 
     private def convertTypeFormula(formula: AnnotatedFormula): AnnotatedFormula = {
       formula match {
-        case TPTP.THFAnnotated(name, role, TPTP.THF.Typing(typeName, typ), annotations) =>
-          val convertedTyping = TPTP.THF.Typing(typeName, convertType(typ))
+        case TPTP.THFAnnotated(name, role, TPTP.THF.Typing(symbol, typ), annotations) =>
+          val convertedTyping = TPTP.THF.Typing(symbol, convertType(typ))
+          typedSymbolsInOriginalProblem += (symbol -> typ)
           TPTP.THFAnnotated(name, role, convertedTyping, annotations)
         case TPTP.THFAnnotated(_, _, _, _) => throw new EmbeddingException(s"Unexpected error: Type conversion called on non-type-statement.")
         case _ => throw new EmbeddingException(s"Only embedding of THF files supported.")
@@ -332,6 +351,7 @@ object ModalEmbedding extends Embedding {
     // Local embedding state
     ///////////////////////////////////////////////////
     import collection.mutable
+    private[this] val typedSymbolsInOriginalProblem: mutable.Map[String, THF.Type] = mutable.Map.empty
     private[this] val modalOperators: mutable.Map[THF.Type, Set[THF.Formula]] = mutable.Map.empty
     private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
     private[this] def multiModal(index: THF.Formula, typ: THF.Type): Unit = {
