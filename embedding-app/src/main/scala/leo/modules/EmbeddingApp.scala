@@ -140,7 +140,7 @@ object EmbeddingApp {
     import leo.datastructures.TPTP.THF
     formula match {
       case TPTP.THFAnnotated(_, _, THF.Logical(f), _) => f match {
-        case THF.BinaryFormula(THF.:=, THF.FunctionTerm(logic, Seq()), _) => if (logic.startsWith("$")) logic.tail else logic
+        case THF.BinaryFormula(THF.==, THF.FunctionTerm(logic, Seq()), _) => if (logic.startsWith("$")) logic.tail else logic
         case _ => throw new MalformedLogicSpecificationException(formula)
       }
       case _ => throw new MalformedLogicSpecificationException(formula)
