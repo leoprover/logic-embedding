@@ -88,7 +88,9 @@ object ModalEmbedding extends Embedding {
     ////////////////////////////////////////////////////////////////////
 
     def apply(): Seq[AnnotatedFormula] = {
-      val (spec, remainingFormulas) = splitInput(problem)
+      import leo.modules.tptputils.SyntaxTransform.transformAnnotatedFormula
+      val problemTHF = problem.map(transformAnnotatedFormula(TPTP.AnnotatedFormula.FormulaType.THF, _))
+      val (spec, remainingFormulas) = splitInput(problemTHF)
       createState(spec)
       val (typeFormulas, nonTypeFormulas) = remainingFormulas.partition(_.role == "type")
       val convertedTypeFormulas = typeFormulas.map(convertTypeFormula)
@@ -228,12 +230,12 @@ object ModalEmbedding extends Embedding {
         }
         case THF.NonclassicalLongOperator(name, parameters) =>
           name match {
-            case "$box" => parameters match {
+            case "$box" | "$necessary" | "$obligatory" | "$knows" => parameters match {
               case Seq() => str2Fun("mbox")
               case Seq(Left(index0)) => mboxIndexed(index0)
               case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
             }
-            case "$dia" => parameters match {
+            case "$dia" | "$possible" | "$permissible" => parameters match {
               case Seq() => str2Fun("mdia")
               case Seq(Left(index0)) => mdiaIndexed(index0)
               case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
@@ -997,7 +999,7 @@ object ModalEmbedding extends Embedding {
     private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
       assert(spec.role == "logic")
       spec.formula match {
-        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm("$modal", Seq()),THF.Tuple(spec0))) =>
+        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(name, Seq()),THF.Tuple(spec0))) if Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal") contains name =>
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
