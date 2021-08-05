@@ -12,7 +12,7 @@ lazy val embedding = (project in file("."))
   .disablePlugins(sbtassembly.AssemblyPlugin)
   .settings(
     commonSettings,
-    version := "1.3",
+    version := "1.4",
     name := "logic-embedding",
     description := "A tool for embedding logics into higher-order logic",
   ).aggregate(runtime, app)
@@ -33,7 +33,7 @@ lazy val app = (project in file("embedding-app"))
 	.settings(
 	  commonSettings,
     name := "logic-embedding-app",
-    version := "1.1",
+    version := "1.2",
     Compile/mainClass := Some("leo.modules.EmbeddingApp"),
     mainClass in assembly := Some("leo.modules.EmbeddingApp"),
     test in assembly := {},
