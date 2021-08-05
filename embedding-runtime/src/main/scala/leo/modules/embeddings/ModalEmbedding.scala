@@ -1064,6 +1064,7 @@ object ModalEmbedding extends Embedding {
                     }
                     if (modalspec.nonEmpty) state(MODALS) += (realIndex -> modalspec)
                   }
+                case "$logicfile" => // Nothing, ignore
                 case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
               }
             case s => throw new EmbeddingException(s"Malformed logic specification entry: ${s.pretty}")
