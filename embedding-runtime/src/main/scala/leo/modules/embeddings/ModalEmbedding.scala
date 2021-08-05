@@ -18,7 +18,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.1"
+  override final def version: String = "1.3"
 
   type Index = String // modal logic index: either ints (e.g., 6 converted to '6') or constants names
 
@@ -90,14 +90,24 @@ object ModalEmbedding extends Embedding {
     def apply(): Seq[AnnotatedFormula] = {
       import leo.modules.tptputils.SyntaxTransform.transformAnnotatedFormula
       val problemTHF = problem.map(transformAnnotatedFormula(TPTP.AnnotatedFormula.FormulaType.THF, _))
-      val (spec, remainingFormulas) = splitInput(problemTHF)
+      val (spec, properFormulas) = splitInput(problemTHF)
       createState(spec)
-      val (typeFormulas, nonTypeFormulas) = remainingFormulas.partition(_.role == "type")
+      val (typeFormulas, nonTypeFormulas) = properFormulas.partition(_.role == "type")
+      val (definitionFormulas, otherFormulas) = nonTypeFormulas.partition(_.role == "definition")
       val convertedTypeFormulas = typeFormulas.map(convertTypeFormula)
-      val convertedOtherFormulas = nonTypeFormulas.map(convertAnnotatedFormula)
+      val convertedDefinitionFormulas = definitionFormulas.map(convertDefinitionFormula)
+      val convertedOtherFormulas = otherFormulas.map(convertAnnotatedFormula)
       val generatedMetaFormulas: Seq[AnnotatedFormula] = generateMetaFormulas()
 
-      generatedMetaFormulas ++ convertedTypeFormulas ++ convertedOtherFormulas
+      generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
+    }
+
+    def convertDefinitionFormula(formula: AnnotatedFormula): AnnotatedFormula = {
+      formula match {
+        case TPTP.THFAnnotated(name, "definition", THF.Logical(THF.BinaryFormula(THF.Eq, THF.FunctionTerm(symbolName, Seq()), body)), annotations) =>
+          TPTP.THFAnnotated(name, "definition", THF.Logical(THF.BinaryFormula(THF.Eq, THF.FunctionTerm(symbolName, Seq()), convertFormula(body))), annotations)
+        case _ => convertAnnotatedFormula(formula)
+      }
     }
 
     def convertAnnotatedFormula(formula: AnnotatedFormula): AnnotatedFormula = {
@@ -155,6 +165,11 @@ object ModalEmbedding extends Embedding {
         case THF.FunctionTerm(f, args) =>
           val convertedArgs = args.map(convertFormula)
           THF.FunctionTerm(f, convertedArgs)
+
+        case THF.QuantifiedFormula(THF.^, variableList, body) =>
+          val convertedBody = convertFormula(body)
+          val convertedVariableList = variableList.map {case (name, ty) => (name, convertType(ty))}
+          THF.QuantifiedFormula(THF.^, convertedVariableList, convertedBody)
 
         case THF.QuantifiedFormula(quantifier, variableList, body) =>
           val convertedBody = convertFormula(body)
@@ -274,10 +289,9 @@ object ModalEmbedding extends Embedding {
           } catch {
             case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
           }
-        case THF.^ => "mlambda"
         case THF.@+ => "mchoice"
         case THF.@- => "mdescription"
-        case _ => throw new EmbeddingException(s"Unexpected type quantifier used as term quantifier: '${quantifier.pretty}'")
+        case _ => throw new EmbeddingException(s"Unexpected quantifier used as term quantifier: '${quantifier.pretty}'")
       }
       THF.FunctionTerm(name, Seq.empty)
     }
