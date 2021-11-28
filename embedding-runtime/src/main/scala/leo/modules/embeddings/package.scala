@@ -8,7 +8,27 @@ import java.util.logging.Logger
 
 
 package object embeddings {
-  class EmbeddingException(message: String) extends RuntimeException(message)
+  final class EmbeddingException(message: String) extends RuntimeException(message)
+  final class MalformedLogicSpecificationException(val spec: TPTP.AnnotatedFormula) extends RuntimeException
+  final class UnspecifiedLogicException extends RuntimeException
+
+  final def getLogicSpecFromProblem(formulas: Seq[TPTP.AnnotatedFormula]): Option[TPTP.AnnotatedFormula] = {
+    formulas.find(f => f.role == "logic")
+  }
+  final def getLogicFromSpec(formula: AnnotatedFormula): String = {
+    import leo.datastructures.TPTP.{THF,TFF}
+    formula match {
+      case TPTP.THFAnnotated(_, _, THF.Logical(f), _) => f match {
+        case THF.BinaryFormula(THF.==, THF.FunctionTerm(logic, Seq()), _) => if (logic.startsWith("$")) logic.tail else logic
+        case _ => throw new MalformedLogicSpecificationException(formula)
+      }
+      case TPTP.TFFAnnotated(_, _, TFF.Logical(f), _) => f match {
+        case TFF.MetaIdentity(TFF.AtomicTerm(logic, Seq()), _) => if (logic.startsWith("$")) logic.tail else logic
+        case _ => throw new MalformedLogicSpecificationException(formula)
+      }
+      case _ => throw new MalformedLogicSpecificationException(formula)
+    }
+  }
 
   final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
   final def serializeType(typ: TPTP.THF.Type): String = {
