@@ -1,6 +1,6 @@
 lazy val commonSettings = Seq(
   organization := "org.leo",
-  scalaVersion := "2.13.6",
+  scalaVersion := "2.13.7",
   scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
@@ -26,7 +26,7 @@ lazy val runtime = (project in file("embedding-runtime"))
     test in assembly := {},
     assemblyJarName in assembly := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % "test"
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.10" % "test"
 	)
 
 lazy val app = (project in file("embedding-app"))
@@ -39,5 +39,5 @@ lazy val app = (project in file("embedding-app"))
     test in assembly := {},
     assemblyJarName in assembly := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
-	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % "test"
+	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.10" % "test"
 	).dependsOn(runtime)
