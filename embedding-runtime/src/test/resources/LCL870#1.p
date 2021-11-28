@@ -20,6 +20,7 @@
 thf(simple_s5,logic,(
     $modal ==
         [ $constants == $rigid,
+          $logicfile == 'log002_1.p',
           $quantification == $decreasing,
           $consequence == $global,
           $modalities == $modal_system_K ] )).
@@ -31,5 +32,11 @@ thf(barcan_formula,conjecture,
     ( ( ! [X: $i] : ( [.] @ (f @ X) ) )
    => ( [.] @ 
           ! [X: $i] : ( f @ X ) ) ) ).
+
+%----Using long connectives it is ...
+% thf(barcan_formula,conjecture,
+%     ( ( ! [X: $i] : ( {$box} @ (f @ X) ) )
+%    => ( {$box} @ 
+%           ! [X: $i] : ( f @ X ) ) ) ).
 
 %------------------------------------------------------------------------------

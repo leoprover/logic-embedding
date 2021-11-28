@@ -8,7 +8,7 @@ import leo.modules.input.TPTPParser
 import ModalEmbedding.ModalEmbeddingOption._
 
 class ModalEmbeddingTest  extends AnyFunSuite {
-  private val modalTHF: Seq[String] = Seq("PUZ999~1.p")
+  private val modalTHF: Seq[String] = Seq("LCL870#1.p")
 
   for (problemName <- modalTHF) {
     test(problemName) {
