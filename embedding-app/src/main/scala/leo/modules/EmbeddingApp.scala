@@ -10,13 +10,14 @@ import java.io.{File, FileNotFoundException, PrintWriter}
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
-  final val version: Double = 1.2
+  final val version: Double = 1.3
 
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None
   private[this] var logic: Option[String] = None
   private[this] var parameterNames: Set[String] = Set.empty
   private[this] var specs: Map[String, String] = Map.empty
+  private[this] var tstpOutput: Boolean = false
 
   final def main(args: Array[String]): Unit = {
     if (args.contains("--help")) {
@@ -29,9 +30,12 @@ object EmbeddingApp {
     else {
       var infile: Option[Source] = None
       var outfile: Option[PrintWriter] = None
-      var error: Boolean = false
+      var error: Option[String] = None
+
       try {
         parseArgs(args.toSeq)
+        // Allocate output file
+        outfile = Some(if (outputFileName.isEmpty) new PrintWriter(System.out) else new PrintWriter(new File(outputFileName.get)))
         // Read input
         infile = Some(if (inputFileName == "-") io.Source.stdin else io.Source.fromFile(inputFileName))
         // Parse and select embedding
@@ -57,49 +61,47 @@ object EmbeddingApp {
           parsedInput.formulas.prepended(embeddingFunction.generateSpecification(specs))
         }
         // Embedding
-        val embeddedFormulas = embeddingFunction.apply(formulasToBeEmbedded, parameters.asInstanceOf[Set[embeddingFunction.OptionType#Value]]) // The world is bad
+        val embeddedFormulas = embeddingFunction.apply(formulasToBeEmbedded, parameters)
         val embeddedProblem = Problem(parsedInput.includes, embeddedFormulas)
         // Write result
         val result = generateResult(embeddedProblem, getSpecFromProblem(formulasToBeEmbedded), embeddingFunction)
-        outfile = Some(if (outputFileName.isEmpty) new PrintWriter(System.out) else new PrintWriter(new File(outputFileName.get)))
-        outfile.get.println(result)
+        outfile.get.print(result)
         outfile.get.flush()
+        // Error handling
       } catch {
         case e: EmbeddingException =>
-          println(s"An error occurred during embedding: ${e.getMessage}")
-          error = true
+          error = Some(s"An error occurred during embedding: ${e.getMessage}")
         case e: IllegalArgumentException =>
-          println(e.getMessage)
-          usage()
-          error = true
+          error = Some(e.toString)
+          if (!tstpOutput) usage()
         case e: UnsupportedLogicException =>
-          println(s"Unsupported logic '${e.logic}'. Aborting.")
-          error = true
+          error = Some(s"Unsupported logic '${e.logic}'. Aborting.")
         case e: UnknownParameterException =>
-          println(s"Parameter ${e.parameterName} is unknown.")
-          println(s"Valid parameters are: ${e.allowedParameters}")
-          error = true
+          error = Some(s"Parameter ${e.parameterName} is unknown. Valid parameters are: ${e.allowedParameters}")
         case e: MalformedLogicSpecificationException =>
-          println(s"Logic specification in the input file cannot be interpreted: ${e.spec.pretty}")
-          error = true
+          error = Some(s"Logic specification in the input file cannot be interpreted: ${e.spec.pretty}")
         case _: UnspecifiedLogicException =>
-          println(s"Logic specification not found inside of input file and no explicit logic given via -l. Aborting.")
-          error = true
+          error = Some(s"Logic specification not found inside of input file and no explicit logic given via -l. Aborting.")
         case e: FileNotFoundException =>
-          println(s"File cannot be found or is not readable/writable: ${e.getMessage}")
-          error = true
+          error = Some(s"File cannot be found or is not readable/writable: ${e.getMessage}")
         case e: TPTPParser.TPTPParseException =>
-          println(s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
-          error = true
+          error = Some(s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
         case e: Throwable =>
-          println(s"Unexpected error. ${e.getMessage}")
-          println("This is considered an implementation error; please report this!")
-          error = true
+          error = Some(s"Unexpected error: ${e.getMessage}. This is considered an implementation error, please report this!")
       } finally {
+        if (error.nonEmpty && tstpOutput) {
+          if (outfile.isDefined) {
+            outfile.get.println(s"% SZS status Error for $inputFileName : ${error.get}\n")
+            outfile.get.flush()
+          } else println(s"% SZS status Error for $inputFileName : ${error.get}\n")
+        }
         infile.foreach(_.close())
         outfile.foreach(_.close())
       }
-      if (error) System.exit(1)
+      if (error.nonEmpty) {
+        if (!tstpOutput) println(error.get)
+        System.exit(1)
+      }
     }
   }
 
@@ -109,7 +111,8 @@ object EmbeddingApp {
     import java.util.Calendar
 
     val sb: StringBuilder = new StringBuilder()
-    sb.append(s"%%% This file was generated by $name, version $version (library version ${Library.version}).\n")
+    if (tstpOutput) sb.append(s"% SZS status Success for $inputFileName\n")
+    sb.append(s"%%% This output was generated by $name, version $version (library version ${Library.version}).\n")
     sb.append(s"%%% Generated on ${Calendar.getInstance().getTime.toString}\n")
     sb.append(s"%%% using '${embedding.name}' embedding, version ${embedding.version}.\n")
     if (logicSpec.isDefined) {
@@ -120,7 +123,10 @@ object EmbeddingApp {
       sb.append(s"%%% Transformation parameters: ${parameterNames.mkString(",")}\n")
     }
     sb.append("\n")
+    if (tstpOutput) sb.append(s"% SZS output start ListOfTHF for $inputFileName\n")
     sb.append(problem.pretty)
+    sb.append("\n")
+    if (tstpOutput) sb.append(s"% SZS output end ListOfTHF for $inputFileName\n")
     sb.toString()
   }
 
@@ -156,7 +162,7 @@ object EmbeddingApp {
   }
 
   private[this] final def usage(): Unit = {
-    println(s"usage: $name [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem file> [<output file>]")
+    println(s"usage: $name [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <problem file> [<output file>]")
     println(
       """
         | <problem file> can be either a file name or '-' (without parentheses) for stdin.
@@ -176,6 +182,11 @@ object EmbeddingApp {
         |     semantics of <spec> to <value>. In this case, -l needs to be provided.
         |     Ignored, if <problem file> contains a logic specification statement.
         |
+        |  --tstp
+        |     Enable TSTP-compatible output: The output in <output file> (or stdout) will
+        |     start with a SZS status value and the output will be wrapped within
+        |     SZS BEGIN and SZS END block delimiters. Disabled by default.
+        |
         |  --version
         |     Prints the version number of the executable and terminates.
         |
@@ -184,7 +195,7 @@ object EmbeddingApp {
         |""".stripMargin)
   }
 
-  private[this] final def parseArgs(args: Seq[String]): Any = {
+  private[this] final def parseArgs(args: Seq[String]): Unit = {
     var args0 = args
     while (args0.nonEmpty) {
       args0 match {
@@ -200,6 +211,9 @@ object EmbeddingApp {
             case Seq(l, r) => specs = specs + (l -> r)
             case _ => throw new IllegalArgumentException(s"Malformed argument to -s option: '$eq'")
           }
+        case Seq("--tstp", rest@_*) =>
+          args0 = rest
+          tstpOutput = true
         case Seq(f) =>
           args0 = Seq.empty
           inputFileName = f
