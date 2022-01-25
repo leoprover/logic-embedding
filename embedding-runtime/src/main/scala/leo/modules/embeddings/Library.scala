@@ -5,10 +5,10 @@ object Library {
 
   def embeddingTable: Map[String, Embedding] = {
     Map(
-      "modal" -> ModalEmbedding,
-      "alethic_modal" -> ModalEmbedding,
-      "deontic_modal" -> ModalEmbedding,
-      "epistemic_modal" -> ModalEmbedding
+      "$modal" -> ModalEmbedding,
+      "$alethic_modal" -> ModalEmbedding,
+      "$deontic_modal" -> ModalEmbedding,
+      "$epistemic_modal" -> ModalEmbedding
     )
   }
 }

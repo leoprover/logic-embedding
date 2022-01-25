@@ -18,14 +18,8 @@ package object embeddings {
   final def getLogicFromSpec(formula: AnnotatedFormula): String = {
     import leo.datastructures.TPTP.{THF,TFF}
     formula match {
-      case TPTP.THFAnnotated(_, _, THF.Logical(f), _) => f match {
-        case THF.BinaryFormula(THF.==, THF.FunctionTerm(logic, Seq()), _) => if (logic.startsWith("$")) logic.tail else logic
-        case _ => throw new MalformedLogicSpecificationException(formula)
-      }
-      case TPTP.TFFAnnotated(_, _, TFF.Logical(f), _) => f match {
-        case TFF.MetaIdentity(TFF.AtomicTerm(logic, Seq()), _) => if (logic.startsWith("$")) logic.tail else logic
-        case _ => throw new MalformedLogicSpecificationException(formula)
-      }
+      case TPTP.THFAnnotated(_, "logic", THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(logic, Seq()), _)), _) => logic
+      case TPTP.TFFAnnotated(_, "logic", TFF.Logical(TFF.MetaIdentity(TFF.AtomicTerm(logic, Seq()), _)), _) => logic
       case _ => throw new MalformedLogicSpecificationException(formula)
     }
   }

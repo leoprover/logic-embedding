@@ -11,7 +11,7 @@ import java.io.{File, FileNotFoundException, PrintWriter}
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
-  final val version: Double = 1.4
+  final val version: Double = 1.5
 
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None
@@ -135,13 +135,11 @@ object EmbeddingApp {
     sb.toString()
   }
 
-  private[this] final def getLogic(maybeSpec: Option[TPTP.AnnotatedFormula]): String = {
-    maybeSpec match {
+  private[this] final def getLogic(maybeSpec: Option[TPTP.AnnotatedFormula]): String = maybeSpec match {
       case Some(value) => getLogicFromSpec(value)
       case None if logic.isDefined => logic.get
       case None => throw new UnspecifiedLogicException
     }
-  }
 
   private[this] final def printVersion(): Unit = {
     println(s"$name $version")
@@ -150,7 +148,7 @@ object EmbeddingApp {
   private[this] final def usage(): Unit = {
     println(s"usage: $name [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <problem file> [<output file>]")
     println(
-      """
+      s"""
         | <problem file> can be either a file name or '-' (without parentheses) for stdin.
         | If <output file> is specified, the result is written to <output file>, otherwise to stdout.
         |
@@ -158,7 +156,7 @@ object EmbeddingApp {
         |  -l <logic>
         |     If <problem file> does not contain a logic specification statement, explicitly set
         |     the input format to <logic>. Ignored, if <problem file> contains a logic specification statement.
-        |     Supported <logic>s are: modal
+        |     Supported <logic>s are: ${Library.embeddingTable.keySet.mkString(", ")}
         |
         |  -p <parameter>
         |     Pass transformation parameter <parameter> to the embedding procedure.

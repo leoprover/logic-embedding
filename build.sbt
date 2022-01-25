@@ -34,7 +34,7 @@ lazy val app = (project in file("embedding-app"))
 	.settings(
 	  commonSettings,
     name := "logic-embedding-app",
-    version := "1.4",
+    version := "1.5",
     Compile/mainClass := Some("leo.modules.EmbeddingApp"),
     mainClass in assembly := Some("leo.modules.EmbeddingApp"),
     test in assembly := {},
