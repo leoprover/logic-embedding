@@ -12,7 +12,7 @@ lazy val embedding = (project in file("."))
   .disablePlugins(sbtassembly.AssemblyPlugin)
   .settings(
     commonSettings,
-    version := "1.6",
+    version := "1.5",
     name := "logic-embedding",
     description := "A tool for embedding logics into higher-order logic",
   ).aggregate(runtime, app)
