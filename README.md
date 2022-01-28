@@ -7,11 +7,24 @@ The tool translates a TPTP problem statement formulated in a non-classical logic
 
 
 ## Logics
-Currently, only modal logics is supported. More logics will be added soon.
+We refer to the TPTP non-classical logic extension at http://tptp.org/NonClassicalLogic/ for a description of the
+logic specification format and the problem syntax.
+
+
+Currently, only modal logics are supported:
+| Logic family name  | Description |
+| ------------- | ------------- |
+| `$modal`  | Normal (quantified) modal logics, with box and diamond operator as `{$box}` and `{$diamond}`, respectively. Short forms: `[.]` for box and `<.>` for diamon. Modal operators can be indexed in both long and short forms, e.g., `{$box(#someindex)}` or `<#anotherindex>`.  |
+| `$alethic_modal` | Same as `$modal` only that the operators are called `{$necessary}` and `{$possible}` instead (short forms are identical).  |
+| `$deontic` | Same as `$modal` only that the operators are called `{$obligatory}` and `{$permissible}` instead (short forms are identical).  |
+| `$alethic_modal` | Similar to `$modal` only that there is only one operator called `{$knows}` (short forms `[.]`).  |
+
+
+ More logics will be added soon.
 
 ## Usage
 ```
-usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem file> [<output file>]
+usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <problem file> [<output file>]
 
  <problem file> can be either a file name or '-' (without parentheses) for stdin.
  If <output file> is specified, the result is written to <output file>, otherwise to stdout.
@@ -20,7 +33,7 @@ usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem f
   -l <logic>
      If <problem file> does not contain a logic specification statement, explicitly set
      the input format to <logic>. Ignored, if <problem file> contains a logic specification statement.
-     Supported <logic>s are: modal
+     Supported <logic>s are: $modal, $alethic_modal, $deontic_modal, $epistemic_modal
 
   -p <parameter>
      Pass transformation parameter <parameter> to the embedding procedure.
@@ -30,6 +43,11 @@ usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem f
      semantics of <spec> to <value>. In this case, -l needs to be provided.
      Ignored, if <problem file> contains a logic specification statement.
 
+  --tstp
+     Enable TSTP-compatible output: The output in <output file> (or stdout) will
+     start with a SZS status value and the output will be wrapped within
+     SZS BEGIN and SZS END block delimiters. Disabled by default.
+
   --version
      Prints the version number of the executable and terminates.
 
@@ -38,6 +56,9 @@ usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] <problem f
 ```
 
 
+## Contact
+In case of questions or comments, feel free to contact Alexander Steen <alexander.steen@uni-greifswald.de>.
+
 ## Notes
-The modal logic embedding is a modified and consolidated re-implementation of Tobias Gleißner's embedding tool at the leoprover/embed_modal repository.
+The modal logic embedding is an extended and consolidated tool inspired by Tobias Gleißner's embedding tool at the leoprover/embed_modal repository.
 This version makes use of the `scala-tptp-parser` library from leoprover/scala-tptp-parser that is much faster, in particular for larger input problems.
