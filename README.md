@@ -5,6 +5,8 @@ _A tool for embedding non-classical logics into higher-order logic (HOL)_
 The tool translates a TPTP problem statement formulated in a non-classical logic 
 (using the logic specification format) into monomorphic or polymorphic THF.
 
+For referencs, please use [![DOI](https://zenodo.org/badge/328684921.svg)](https://zenodo.org/badge/latestdoi/328684921)
+
 
 ## Logics
 We refer to the TPTP non-classical logic extension at http://tptp.org/NonClassicalLogic/ for a description of the
