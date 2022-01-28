@@ -23,6 +23,9 @@ Currently, only modal logics are supported:
  More logics will be added soon.
 
 ## Usage
+An executable JAR file is distributed with the most current release. 
+
+
 ```
 usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <problem file> [<output file>]
 
