@@ -76,7 +76,7 @@ package object embeddings {
         if (default.isEmpty) {
           default = Some(defaultValue)
         } else throw new EmbeddingException(s"More than one default value for the semantics specification was given. This is considered an error.")
-      case BinaryFormula(TPTP.THF.:=, FunctionTerm(name, Seq()), FunctionTerm(value, Seq())) =>
+      case BinaryFormula(TPTP.THF.==, FunctionTerm(name, Seq()), FunctionTerm(value, Seq())) =>
         if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '$name' given. This is considered an error.")
         else {
           mapping = mapping + (name -> value)
@@ -102,12 +102,12 @@ package object embeddings {
 
     tupleElements foreach {
       case FunctionTerm(defaultValue, Seq()) =>  default = default :+ defaultValue
-      case BinaryFormula(TPTP.THF.:=, name, FunctionTerm(value, Seq())) =>
+      case BinaryFormula(TPTP.THF.==, name, FunctionTerm(value, Seq())) =>
         if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
         else {
           mapping = mapping + (name -> Seq(value))
         }
-      case bf@BinaryFormula(TPTP.THF.:=, name, Tuple(entries)) if entries.nonEmpty =>
+      case bf@BinaryFormula(TPTP.THF.==, name, Tuple(entries)) if entries.nonEmpty =>
         if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
         else {
           val (convertedEntries, convertedEntriesMap) = parseTupleListRHS(entries)
