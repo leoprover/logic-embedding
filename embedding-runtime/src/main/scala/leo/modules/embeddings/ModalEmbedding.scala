@@ -40,8 +40,12 @@ object ModalEmbedding extends Embedding {
   }
 
   override final def apply(problem: TPTP.Problem,
-                  embeddingOptions: Set[ModalEmbeddingOption.Value] = Set.empty): TPTP.Problem =
+                  embeddingOptions: Set[ModalEmbeddingOption.Value]): TPTP.Problem =
     new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+
+  override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
+                           embeddingOptions: Set[ModalEmbeddingOption.Value]): Seq[TPTP.AnnotatedFormula] =
+    apply(TPTP.Problem(Seq.empty, formulas), embeddingOptions).formulas
 
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
