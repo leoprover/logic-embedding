@@ -1,7 +1,6 @@
 package leo.modules.embeddings
 
 import leo.datastructures.TPTP
-import leo.datastructures.TPTP.AnnotatedFormula
 
 trait Embedding {
   type OptionType <: Enumeration
@@ -10,7 +9,7 @@ trait Embedding {
   def version: String
 
   @throws[EmbeddingException]("if the embedding procedure could not be executed successfully.")
-  def apply(problem: Seq[AnnotatedFormula], embeddingOptions: Set[OptionType#Value]): Seq[AnnotatedFormula]
+  def apply(problem: TPTP.Problem, embeddingOptions: Set[OptionType#Value]): TPTP.Problem
 
   def embeddingParameter: OptionType
   def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated

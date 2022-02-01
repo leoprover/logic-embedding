@@ -15,8 +15,8 @@ class ModalEmbeddingTest  extends AnyFunSuite {
       val source = io.Source.fromResource(s"$problemName")
       try {
         val input = TPTPParser.problem(source)
-        val transformed = ModalEmbedding.apply(input.formulas)
-        transformed.foreach(t => println(t.pretty))
+        val transformed = ModalEmbedding.apply(input)
+        transformed.formulas.foreach(t => println(t.pretty))
       } catch {
         case e: TPTPParser.TPTPParseException => println(s"Parse error at ${e.line}:${e.offset}: ${e.getMessage}")
           throw e

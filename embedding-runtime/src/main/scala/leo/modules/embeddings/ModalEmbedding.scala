@@ -39,8 +39,8 @@ object ModalEmbedding extends Embedding {
     annotatedTHF(spec.toString)
   }
 
-  override final def apply(problem: Seq[AnnotatedFormula],
-                  embeddingOptions: Set[ModalEmbeddingOption.Value] = Set.empty): Seq[AnnotatedFormula] =
+  override final def apply(problem: TPTP.Problem,
+                  embeddingOptions: Set[ModalEmbeddingOption.Value] = Set.empty): TPTP.Problem =
     new ModalEmbeddingImpl(problem, embeddingOptions).apply()
 
   /////////////////////////////////////////////////////////////////////////////////
@@ -48,7 +48,7 @@ object ModalEmbedding extends Embedding {
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class ModalEmbeddingImpl(problem: Seq[AnnotatedFormula], embeddingOptions: Set[ModalEmbeddingOption.Value]) {
+  private[this] final class ModalEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[ModalEmbeddingOption.Value]) {
     import ModalEmbeddingOption._
 
     ///////////////////////////////////////////////////////////////////
@@ -87,10 +87,11 @@ object ModalEmbedding extends Embedding {
     private val domainEmbeddingType: Boolean = embeddingOptions.contains(DOMAINS_SYNTACTICAL) // default semantical
     ////////////////////////////////////////////////////////////////////
 
-    def apply(): Seq[AnnotatedFormula] = {
-      import leo.modules.tptputils.SyntaxTransform.transformAnnotatedFormula
-      val problemTHF = problem.map(transformAnnotatedFormula(TPTP.AnnotatedFormula.FormulaType.THF, _))
-      val (spec, properFormulas) = splitInput(problemTHF)
+    def apply(): TPTP.Problem = {
+      import leo.modules.tptputils.SyntaxTransform.transformProblem
+      val problemTHF = transformProblem(TPTP.AnnotatedFormula.FormulaType.THF, problem, true)
+      val formulas = problemTHF.formulas
+      val (spec, properFormulas) = splitInput(formulas)
       createState(spec)
       val (typeFormulas, nonTypeFormulas) = properFormulas.partition(_.role == "type")
       val (definitionFormulas, otherFormulas) = nonTypeFormulas.partition(_.role == "definition")
@@ -99,7 +100,8 @@ object ModalEmbedding extends Embedding {
       val convertedOtherFormulas = otherFormulas.map(convertAnnotatedFormula)
       val generatedMetaFormulas: Seq[AnnotatedFormula] = generateMetaFormulas()
 
-      generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
+      val result = generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
+      TPTP.Problem(problem.includes, result)
     }
 
     def convertDefinitionFormula(formula: AnnotatedFormula): AnnotatedFormula = {
@@ -222,8 +224,6 @@ object ModalEmbedding extends Embedding {
     private[this] def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
       connective match {
         case THF.~ => str2Fun("mnot")
-        case THF.Eq => str2Fun("meq")
-        case THF.Neq => str2Fun("mneq")
         case THF.<=> => str2Fun("mequiv")
         case THF.Impl => str2Fun("mimplies")
         case THF.<= => str2Fun("mif")
@@ -259,6 +259,8 @@ object ModalEmbedding extends Embedding {
           }
 
         /// Non-classical connectives END
+        // Error cases
+        case THF.Eq | THF.Neq => throw new EmbeddingException(s"Equality and inequality are not supported (due to inclarities with equality in modal logic). Please consider axiomatizing your own equality predicate in the problem.")
         case THF.App => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
         case THF.:= => throw new EmbeddingException(s"Unexpected assignment operator used as connective.")
         case THF.== => throw new EmbeddingException(s"Unexpected meta-logical identity operator used as connective.")
