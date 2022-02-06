@@ -1,6 +1,6 @@
 lazy val commonSettings = Seq(
   organization := "org.leo",
-  scalaVersion := "2.13.7",
+  scalaVersion := "2.13.8",
   scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
@@ -22,11 +22,11 @@ lazy val runtime = (project in file("embedding-runtime"))
 	  commonSettings,
     name := "logic-embedding-runtime",
     version := "1.3",
-    assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false),
-    test in assembly := {},
-    assemblyJarName in assembly := s"${name.value}-${version.value}.jar",
+    assembly/assemblyOption := (assembly/assemblyOption).value.copy(includeScala = false),
+    assembly/test := {},
+    assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.4",
+    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.5",
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.10" % "test"
 	)
 
@@ -36,10 +36,10 @@ lazy val app = (project in file("embedding-app"))
     name := "logic-embedding-app",
     version := "1.5",
     Compile/mainClass := Some("leo.modules.EmbeddingApp"),
-    mainClass in assembly := Some("leo.modules.EmbeddingApp"),
-    test in assembly := {},
-    assemblyJarName in assembly := s"${name.value}-${version.value}.jar",
+    assembly/mainClass := Some("leo.modules.EmbeddingApp"),
+    assembly/test := {},
+    assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.4",
+    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.5",
 	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.10" % "test"
 	).dependsOn(runtime)
