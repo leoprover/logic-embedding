@@ -18,10 +18,10 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.4"
+  override final def version: String = "1.5"
 
   private[this] final val defaultConstantSpec = "$rigid"
-  private[this] final val defaultConsequenceSpec = "$global"
+  private[this] final val defaultQuantificationSpec = "$constant"
   private[this] final val defaultModalitiesSpec = "$modal_system_K"
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated = {
     import modules.input.TPTPParser.annotatedTHF
@@ -29,7 +29,7 @@ object ModalEmbedding extends Embedding {
     spec.append("thf(logic_spec, logic, (")
     spec.append("$modal == [")
     spec.append("$constants == "); spec.append(specs.getOrElse("$constants", defaultConstantSpec)); spec.append(",")
-    spec.append("$consequence == "); spec.append(specs.getOrElse("$consequence", defaultConsequenceSpec)); spec.append(",")
+    spec.append("$quantification == "); spec.append(specs.getOrElse("$quantification", defaultQuantificationSpec)); spec.append(",")
     spec.append("$modalities == "); spec.append(specs.getOrElse("$modalities", defaultModalitiesSpec))
     spec.append("] )).")
     annotatedTHF(spec.toString)
@@ -62,10 +62,6 @@ object ModalEmbedding extends Embedding {
     state(RIGIDITY) ++= Seq("$true" -> RIGIDITY_RIGID, "$false" -> RIGIDITY_RIGID,
       "$less" -> RIGIDITY_RIGID, "$lesseq" -> RIGIDITY_RIGID,
       "$greater" -> RIGIDITY_RIGID, "$greatereq" -> RIGIDITY_RIGID)
-
-//    private final val CONSEQUENCE_GLOBAL = true
-//    private final val CONSEQUENCE_LOCAL = false
-//    private final val CONSEQUENCE = state.createKey[String, Boolean]()
 
     private final val DOMAIN_CONSTANT = 0
     private final val DOMAIN_VARYING = 1
