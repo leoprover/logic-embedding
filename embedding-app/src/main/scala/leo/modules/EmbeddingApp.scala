@@ -59,7 +59,7 @@ object EmbeddingApp {
         // Do embedding
         // First: Prepend logic specification if none exists.
         val logicSpec = if (maybeLogicSpec.isDefined) maybeLogicSpec.get else embeddingFunction.generateSpecification(specs)
-        val problemToBeEmbedded = if (maybeLogicSpec.isDefined) parsedInput else TPTP.Problem(parsedInput.includes, parsedInput.formulas.prepended(logicSpec))
+        val problemToBeEmbedded = if (maybeLogicSpec.isDefined) parsedInput else TPTP.Problem(parsedInput.includes, parsedInput.formulas.prepended(logicSpec), Map.empty)
         // Embedding
         val embeddedProblem = embeddingFunction.apply(problemToBeEmbedded, parameters)
         // Write result

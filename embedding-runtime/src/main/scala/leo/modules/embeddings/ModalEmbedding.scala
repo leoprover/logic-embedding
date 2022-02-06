@@ -41,7 +41,7 @@ object ModalEmbedding extends Embedding {
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
                            embeddingOptions: Set[ModalEmbeddingOption.Value]): Seq[TPTP.AnnotatedFormula] =
-    apply(TPTP.Problem(Seq.empty, formulas), embeddingOptions).formulas
+    apply(TPTP.Problem(Seq.empty, formulas, Map.empty), embeddingOptions).formulas
 
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
@@ -101,7 +101,7 @@ object ModalEmbedding extends Embedding {
       val generatedMetaFormulas: Seq[AnnotatedFormula] = generateMetaFormulas()
 
       val result = generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
-      TPTP.Problem(problem.includes, result)
+      TPTP.Problem(problem.includes, result, Map.empty)
     }
 
     def convertDefinitionFormula(formula: AnnotatedFormula): AnnotatedFormula = {
