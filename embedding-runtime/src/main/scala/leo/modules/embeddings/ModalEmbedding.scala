@@ -18,12 +18,9 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.3"
-
-  type Index = String // modal logic index: either ints (e.g., 6 converted to '6') or constants names
+  override final def version: String = "1.4"
 
   private[this] final val defaultConstantSpec = "$rigid"
-  private[this] final val defaultQuantificationSpec = "$constant"
   private[this] final val defaultConsequenceSpec = "$global"
   private[this] final val defaultModalitiesSpec = "$modal_system_K"
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated = {
@@ -32,7 +29,6 @@ object ModalEmbedding extends Embedding {
     spec.append("thf(logic_spec, logic, (")
     spec.append("$modal == [")
     spec.append("$constants == "); spec.append(specs.getOrElse("$constants", defaultConstantSpec)); spec.append(",")
-    spec.append("$quantification == "); spec.append(specs.getOrElse("$quantification", defaultQuantificationSpec)); spec.append(",")
     spec.append("$consequence == "); spec.append(specs.getOrElse("$consequence", defaultConsequenceSpec)); spec.append(",")
     spec.append("$modalities == "); spec.append(specs.getOrElse("$modalities", defaultModalitiesSpec))
     spec.append("] )).")
@@ -67,9 +63,9 @@ object ModalEmbedding extends Embedding {
       "$less" -> RIGIDITY_RIGID, "$lesseq" -> RIGIDITY_RIGID,
       "$greater" -> RIGIDITY_RIGID, "$greatereq" -> RIGIDITY_RIGID)
 
-    private final val CONSEQUENCE_GLOBAL = true
-    private final val CONSEQUENCE_LOCAL = false
-    private final val CONSEQUENCE = state.createKey[String, Boolean]()
+//    private final val CONSEQUENCE_GLOBAL = true
+//    private final val CONSEQUENCE_LOCAL = false
+//    private final val CONSEQUENCE = state.createKey[String, Boolean]()
 
     private final val DOMAIN_CONSTANT = 0
     private final val DOMAIN_VARYING = 1
@@ -93,7 +89,7 @@ object ModalEmbedding extends Embedding {
 
     def apply(): TPTP.Problem = {
       import leo.modules.tptputils.SyntaxTransform.transformProblem
-      val problemTHF = transformProblem(TPTP.AnnotatedFormula.FormulaType.THF, problem, true)
+      val problemTHF = transformProblem(TPTP.AnnotatedFormula.FormulaType.THF, problem, addMissingTypeDeclarations = true)
       val formulas = problemTHF.formulas
       val (spec, properFormulas) = splitInput(formulas)
       createState(spec)
@@ -117,14 +113,35 @@ object ModalEmbedding extends Embedding {
     }
 
     def convertAnnotatedFormula(formula: AnnotatedFormula): AnnotatedFormula = {
+      import leo.modules.tptputils._
       formula match {
         case TPTP.THFAnnotated(name, role, TPTP.THF.Logical(formula), annotations) =>
           val convertedFormula0 = convertFormula(formula)
-          val convertedFormula = state(CONSEQUENCE)(name) match {
-            case CONSEQUENCE_GLOBAL => THF.BinaryFormula(THF.App, mglobal, convertedFormula0)
-            case CONSEQUENCE_LOCAL => THF.BinaryFormula(THF.App, mlocal, convertedFormula0)
+          val convertedFormula = role match {
+            case "hypothesis" | "conjecture" => // assumed to be local
+              localFormulaExists = true
+              THF.BinaryFormula(THF.App, mlocal, convertedFormula0)
+            case _ if isSimpleRole(role) => // everything else is assumed to be global
+              globalFormulaExists = true
+              THF.BinaryFormula(THF.App, mglobal, convertedFormula0)
+            case _ => // role with subroles, check whether a subrole specified $local or $global explicitly
+              getSubrole(role).get match {
+                case "local" =>
+                  localFormulaExists = true
+                  THF.BinaryFormula(THF.App, mlocal, convertedFormula0)
+                case "global" =>
+                  globalFormulaExists = true
+                  THF.BinaryFormula(THF.App, mglobal, convertedFormula0)
+                case x => throw new EmbeddingException(s"Unknown subrole '$x' in conversion of formula '$name'. ")
+              }
           }
-          TPTP.THFAnnotated(name, role, TPTP.THF.Logical(convertedFormula), annotations)
+          // Strip $local, $global etc. role contents from role (as classical ATPs cannot deal with it)
+          // And normalize hypothesis to axiom.
+          val updatedRole = toSimpleRole(role) match {
+            case "hypothesis" => "axiom"
+            case r => r
+          }
+          TPTP.THFAnnotated(name, updatedRole, TPTP.THF.Logical(convertedFormula), annotations)
         case _ => throw new EmbeddingException(s"Only embedding of THF files supported.")
       }
     }
@@ -349,7 +366,9 @@ object ModalEmbedding extends Embedding {
     // Local embedding state
     ///////////////////////////////////////////////////
     import collection.mutable
-//    private[this] val typedSymbolsInOriginalProblem: mutable.Map[String, THF.Type] = mutable.Map.empty
+
+    private[this] var localFormulaExists = false
+    private[this] var globalFormulaExists = false
 
     private[this] val modalOperators: mutable.Set[THF.FunctionTerm] = mutable.Set.empty
     private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
@@ -392,22 +411,13 @@ object ModalEmbedding extends Embedding {
       }
       /////////////////////////////////////////////////////////////
       // Then: Define mglobal/mlocal
-      state.getDefault(CONSEQUENCE) match {
-        case Some(consequence) => consequence match { // Add default and the other one if used
-          case CONSEQUENCE_GLOBAL =>
-            result.appendAll(mglobalTPTPDef())
-            if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mlocalTPTPDef())
-          case CONSEQUENCE_LOCAL =>
-            result.appendAll(mlocalTPTPDef())
-            if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_GLOBAL) ||
-              modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL ||
-              domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) result.appendAll(mglobalTPTPDef())
-        }
-        case None => // Add only those used
-          if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_GLOBAL) ||
-            modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL ||
-            domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) result.appendAll(mglobalTPTPDef())
-          if (state(CONSEQUENCE).exists(_._2 == CONSEQUENCE_LOCAL)) result.appendAll(mlocalTPTPDef())
+      if (localFormulaExists) {
+        result.appendAll(mlocalTPTPDef())
+      }
+      if (globalFormulaExists ||
+        modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL ||  // We use mglobal for those meta-definitions
+        domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) {     // so introduce mglobal also if there is no global
+        result.appendAll(mglobalTPTPDef())                          // object-level formula
       }
       /////////////////////////////////////////////////////////////
       // Then: Define connectives
@@ -1059,21 +1069,6 @@ object ModalEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$consequence" =>
-                  val (default, map) = parseRHS(rhs)
-                  default match {
-                    case Some("$local") => state.setDefault(CONSEQUENCE, CONSEQUENCE_LOCAL)
-                    case Some("$global") => state.setDefault(CONSEQUENCE, CONSEQUENCE_GLOBAL)
-                    case None => // Do nothing, no default
-                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
-                  }
-                  map foreach { case (name, consequence) =>
-                    consequence match {
-                      case "$local" => state(CONSEQUENCE) += (name -> CONSEQUENCE_LOCAL)
-                      case "$global" => state(CONSEQUENCE) += (name -> CONSEQUENCE_GLOBAL)
-                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$consequence'")
-                    }
-                  }
                 case "$modalities" => val (default, map) = parseListRHS(rhs)
                   if (default.nonEmpty) state.setDefault(MODALS, default)
                   map foreach { case (name, modalspec) =>
@@ -1084,7 +1079,6 @@ object ModalEmbedding extends Embedding {
                     }
                     if (modalspec.nonEmpty) state(MODALS) += (realIndex -> modalspec)
                   }
-                case "$logicfile" => // Nothing, ignore
                 case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
               }
             case s => throw new EmbeddingException(s"Malformed logic specification entry: ${s.pretty}")
