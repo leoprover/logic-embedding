@@ -291,13 +291,13 @@ object DyadicDeonticLogicEmbedding extends Embedding {
         annotatedTHF(s"thf(${pvset}_type, type, $pvset: $worldType > $worldType > $$o)."),
         annotatedTHF(s"thf(${obset}_type, type, $obset: ($worldType > $$o) > ($worldType > $$o) > $$o)."),
         annotatedTHF(s"thf(ddl_av, axiom, ![W:$worldType]: (? [X: $worldType]: ($avset @ W @ X)))."),
-        annotatedTHF(s"thf(ddl_pv1, axiom, ![W:$worldType, X:$worldType]: ( (av @ W @ X) => (pv @ W @ X)))."),
-        annotatedTHF(s"thf(ddl_pv2, axiom, ![W:$worldType]: ( (pv @ W @ W)))."),
+        annotatedTHF(s"thf(ddl_pv1, axiom, ![W:$worldType, X:$worldType]: ( ($avset @ W @ X) => ($pvset @ W @ X)))."),
+        annotatedTHF(s"thf(ddl_pv2, axiom, ![W:$worldType]: ( ($pvset @ W @ W)))."),
         annotatedTHF(s"thf(ddl_ob1, axiom, ![X:$worldType>$$o]: (~($obset @ X @ (^[Y: $worldType]: ($$false)))))."),
         annotatedTHF(
           s"""thf(ddl_ob2, axiom,
              |  ! [X: $worldType > $$o,Y: $worldType > $$o,Z: $worldType > $$o] :
-             |            ( ! [W: world] :
+             |            ( ! [W: $worldType] :
              |                ( ( ( Y @ W ) & ( X @ W ) ) <=> ( ( Z @ W ) & ( X @ W ) ) )
              |           => ( ( $obset @ X @ Y ) <=> ( $obset @ X @ Z ) ) )
              |).""".stripMargin),
