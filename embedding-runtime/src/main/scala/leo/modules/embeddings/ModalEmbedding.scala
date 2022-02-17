@@ -237,7 +237,6 @@ object ModalEmbedding extends Embedding {
       }
     }
 
-    @inline private[this] def str2Fun(functionName: String): THF.Formula = THF.FunctionTerm(functionName, Seq.empty)
     private[this] def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
       connective match {
         case THF.~ => str2Fun("mnot")

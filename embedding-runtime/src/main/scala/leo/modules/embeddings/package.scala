@@ -24,6 +24,8 @@ package object embeddings {
     }
   }
 
+  @inline final def str2Fun(functionName: String): TPTP.THF.Formula = TPTP.THF.FunctionTerm(functionName, Seq.empty)
+
   final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
   final def serializeType(typ: TPTP.THF.Type): String = {
     import TPTP.THF._
