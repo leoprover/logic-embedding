@@ -17,15 +17,13 @@ import TPTP.{AnnotatedFormula, THF}
  * @see [[https://xavierparent.co.uk/pdf/eHOL.pdf]]
  */
 object DyadicDeonticLogicEmbedding extends Embedding {
-  object CarmoJonesEmbeddingsOption extends Enumeration { }
+  object DyadicDeonticLogicEmbeddingParameter extends Enumeration { }
 
-  override final type OptionType = CarmoJonesEmbeddingsOption.type
+  override final type OptionType = DyadicDeonticLogicEmbeddingParameter.type
 
   override final val name: String = "$$ddl"
-
   override final val version: String = "1.0"
-
-  override final def embeddingParameter: CarmoJonesEmbeddingsOption.type = CarmoJonesEmbeddingsOption
+  override final def embeddingParameter: DyadicDeonticLogicEmbeddingParameter.type = DyadicDeonticLogicEmbeddingParameter
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  {
     import leo.modules.input.TPTPParser.annotatedTHF
@@ -41,7 +39,7 @@ object DyadicDeonticLogicEmbedding extends Embedding {
     annotatedTHF(spec.toString)
   }
 
-  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[CarmoJonesEmbeddingsOption.Value]): TPTP.Problem =
+  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[DyadicDeonticLogicEmbeddingParameter.Value]): TPTP.Problem =
     new DDLEmbeddingImpl(problem).apply()
 
   /////////////////////////////////////////////////////////////////////////////////
@@ -200,14 +198,14 @@ object DyadicDeonticLogicEmbedding extends Embedding {
           parameters match {
             case Seq() => name match {
               case `boxConnective` => str2Fun(box)
-              case `actualBoxConnective` => str2Fun(actualbox)
-              case `potentialBoxConnective` => str2Fun(potentialbox)
+              case `actualBoxConnective` if ddlSystem == CarmoJones => str2Fun(actualbox)
+              case `potentialBoxConnective` if ddlSystem == CarmoJones => str2Fun(potentialbox)
               case `diaConnective` => str2Fun(dia)
-              case `actualDiaConnective` => str2Fun(actualdia)
-              case `potentialDiaConnective` => str2Fun(potentialdia)
+              case `actualDiaConnective` if ddlSystem == CarmoJones => str2Fun(actualdia)
+              case `potentialDiaConnective` if ddlSystem == CarmoJones => str2Fun(potentialdia)
               case `obligationConnective` => str2Fun(obligation)
-              case `actualObligationConnective` => str2Fun(actualobligation)
-              case `primaryObligationConnective` => str2Fun(primaryobligation)
+              case `actualObligationConnective` if ddlSystem == CarmoJones => str2Fun(actualobligation)
+              case `primaryObligationConnective` if ddlSystem == CarmoJones => str2Fun(primaryobligation)
             }
             case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
           }
@@ -425,7 +423,9 @@ object DyadicDeonticLogicEmbedding extends Embedding {
                       system match {
                         case "$$aqvistE" => ddlSystem = AqvistE
                         case "$$aqvistF" => ddlSystem = AqvistF
+                        throw new EmbeddingException(s"Aqvist DDL logic F currently not supported.")
                         case "$$aqvistG" => ddlSystem = AqvistG
+                          throw new EmbeddingException(s"Aqvist DDL logic G currently not supported.")
                         case "$$carmoJones" => ddlSystem = CarmoJones
                         case _ => throw new EmbeddingException(s"Unknown DDL system value '$system' in logic specification ${spec.pretty}")
                       }
