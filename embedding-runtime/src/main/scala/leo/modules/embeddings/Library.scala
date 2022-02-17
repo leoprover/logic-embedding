@@ -9,7 +9,8 @@ object Library {
       "$alethic_modal" -> ModalEmbedding,
       "$deontic_modal" -> ModalEmbedding,
       "$epistemic_modal" -> ModalEmbedding,
-      "$$ddl" -> DyadicDeonticLogicEmbedding
+      "$$ddl" -> DyadicDeonticLogicEmbedding,
+      "$$hybrid" -> HybridLogicEmbedding
     )
   }
 }
