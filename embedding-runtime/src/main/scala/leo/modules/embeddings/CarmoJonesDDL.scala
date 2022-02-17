@@ -11,9 +11,7 @@ import TPTP.{AnnotatedFormula, THF}
  * @see [[https://xavierparent.co.uk/pdf/article-final.pdf]]
  */
 object CarmoJonesDDL extends Embedding {
-  object CarmoJonesEmbeddingsOption extends Enumeration {
-    final val MONOMORPHIC, POLYMORPHIC = Value
-  }
+  object CarmoJonesEmbeddingsOption extends Enumeration { }
 
   override final type OptionType = CarmoJonesEmbeddingsOption.type
 
@@ -26,15 +24,22 @@ object CarmoJonesDDL extends Embedding {
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated = ???
 
   override final def apply(problem: TPTP.Problem, embeddingOptions: Set[CarmoJonesEmbeddingsOption.Value]): TPTP.Problem =
-    new DDLEmbeddingImpl(problem, embeddingOptions).apply()
+    new DDLEmbeddingImpl(problem).apply()
 
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class DDLEmbeddingImpl(problem: TPTP.Problem, embeddingsOptions: Set[CarmoJonesEmbeddingsOption.Value]) {
-    import CarmoJonesEmbeddingsOption._
+  private[this] final class DDLEmbeddingImpl(problem: TPTP.Problem) {
+
+    private[this] var ddlSystem: DDLSystem = Unknown
+    sealed abstract class DDLSystem
+    final case object Unknown extends DDLSystem
+    final case object AqvistE extends DDLSystem
+    final case object AqvistF extends DDLSystem
+    final case object AqvistG extends DDLSystem
+    final case object CarmoJones extends DDLSystem
 
     private[this] val worldType: String = "ddlworld"
     @inline private[this] def cworldType: THF.Formula = str2Fun(worldType)
@@ -47,7 +52,7 @@ object CarmoJonesDDL extends Embedding {
       val problemTHF = transformProblem(TPTP.AnnotatedFormula.FormulaType.THF, problem, addMissingTypeDeclarations = true)
       val formulas = problemTHF.formulas
       val (spec, properFormulas) = splitInput(formulas)
-      //      createState(spec)
+      createState(spec)
       val (typeFormulas, nonTypeFormulas) = properFormulas.partition(_.role == "type")
       val (definitionFormulas, otherFormulas) = nonTypeFormulas.partition(_.role == "definition")
       val convertedTypeFormulas = typeFormulas.map(convertTypeFormula)
@@ -195,6 +200,31 @@ object CarmoJonesDDL extends Embedding {
     }
 
 
+    private def generateMetaFormulas(): Seq[TPTP.AnnotatedFormula] = {
+      import scala.collection.mutable
+
+      val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
+      /////////////////////////////////////////////////////////////
+      // First: Introduce world type
+      result.append(worldTypeTPTPDef())
+      /////////////////////////////////////////////////////////////
+      // Then: Introduce mrel
+      result.append(simpleAccessibilityRelationTPTPDef())
+      /////////////////////////////////////////////////////////////
+      // Then: Define valid
+      result.appendAll(validTPTPDef())
+      /////////////////////////////////////////////////////////////
+      // Then: Define connectives
+      result.appendAll(connectivesTPTPDef())
+      /////////////////////////////////////////////////////////////
+      // Then: Define modal operators
+      result.appendAll(simpleModalOperatorsTPTPDef())
+      /////////////////////////////////////////////////////////////
+      // Return all
+      result.toSeq
+    }
+
+
     private[this] def worldTypeTPTPDef(): TPTP.AnnotatedFormula = {
       import leo.modules.input.TPTPParser.annotatedTHF
       annotatedTHF(s"thf($worldType, type, $worldType: $$tType).")
@@ -204,11 +234,11 @@ object CarmoJonesDDL extends Embedding {
       annotatedTHF(s"thf(mrel_type, type, mrel: $worldType > $worldType > $$o).")
     }
 
-    private[this] def mglobalTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+    private[this] def validTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import leo.modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(${valid}_type, type, ${valid}: ($worldType > $$o) > $$o)."),
-        annotatedTHF(s"thf(${valid}_def, definition, ${valid} = (^ [Phi: $worldType > $$o]: ![W: $worldType]: (Phi @ W)) ).")
+        annotatedTHF(s"thf(${valid}_type, type, $valid: ($worldType > $$o) > $$o)."),
+        annotatedTHF(s"thf(${valid}_def, definition, $valid = (^ [Phi: $worldType > $$o]: ![W: $worldType]: (Phi @ W)) ).")
       )
     }
     private[this] def connectivesTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
@@ -226,8 +256,47 @@ object CarmoJonesDDL extends Embedding {
         annotatedTHF(s"thf(${equiv}_def, definition , ( $equiv = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) <=> (B@W) )))).")
       )
     }
+    private[this] def simpleModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+      import leo.modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF(s"thf(${box}_type, type, $box: ($worldType>$$o)>$worldType>$$o )."),
+        annotatedTHF(s"thf(${box}_def, definition, ( $box = (^ [Phi:$worldType>$$o, W:$worldType]: ![V:$worldType]: ( Phi @ V ))))."),
+        annotatedTHF(s"thf(${dia}_type, type, $dia: ($worldType>$$o)>$worldType>$$o )."),
+        annotatedTHF(s"thf(${dia}_def, definition, ( $dia = (^ [Phi:$worldType>$$o, W:$worldType]: ?[V:$worldType]: ( Phi @ V ))))."),
+        annotatedTHF(s"thf(${obligation}_type, type, $obligation: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o )."),
+        annotatedTHF(s"thf(${obligation}_def, definition, ( $obligation = (^ [A:$worldType>$$o, B: $worldType>$$o, X:$worldType]: ![W:$worldType]: ( ((A @ W) & (! [Y:$worldType] : ( (A @ Y) => (mrel @ W @ Y) ))) => (B @ W) )))).")
+      )
+    }
 
 
+    //////////////////////////////////////////////////////////////////////
+    // Logic specification parsing
+    //////////////////////////////////////////////////////////////////////
+
+    private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
+      spec.formula match {
+        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(`name`, Seq()),THF.Tuple(spec0)))  =>
+          spec0 foreach {
+            case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
+              propertyName match {
+                case "$$system" =>
+                  rhs match {
+                    case THF.FunctionTerm(system, Seq()) =>
+                      system match {
+                        case "$$aqvistE" => ddlSystem = AqvistE
+                        case "$$aqvistF" => ddlSystem = AqvistF
+                        case "$$aqvistG" => ddlSystem = AqvistG
+                        case "$$carmoJones" => ddlSystem = CarmoJones
+                      }
+                    case  _ => throw new EmbeddingException(s"Malformed system value '${rhs.pretty}' in logic specification ${spec.pretty}")
+                  }
+                case _ => throw new EmbeddingException(s"Unknown logic semantics property '$propertyName'")
+              }
+            case s => throw new EmbeddingException(s"Malformed logic specification entry: ${s.pretty}")
+          }
+        case _ => throw new EmbeddingException(s"Malformed logic specification entry: ${spec.pretty}")
+      }
+    }
 
   }
 
