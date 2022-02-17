@@ -189,6 +189,12 @@ object HybridLogicEmbedding extends Embedding {
           nominal(nom)
           THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("mshift", Seq()), nterm), convertFormula(rhs))
 
+        case THF.BinaryFormula(App,
+            THF.ConnectiveTerm(THF.NonclassicalLongOperator("$$shift", Seq(Left(nterm@THF.Variable(_))))),
+            rhs
+          ) =>
+          THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("mshift", Seq()), nterm), convertFormula(rhs))
+
         // special case for shifter operator @: we need to know the symbol after the operator :-(
         case THF.BinaryFormula(App,
             THF.ConnectiveTerm(THF.NonclassicalLongOperator("$$bind", Seq(Left(THF.Variable(nvar))))),
