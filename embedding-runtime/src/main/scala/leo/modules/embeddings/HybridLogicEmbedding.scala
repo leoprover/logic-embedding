@@ -181,6 +181,23 @@ object HybridLogicEmbedding extends Embedding {
           nominal(nom)
           rhs
 
+        // special case for shifter operator @: we need to know the symbol after the operator :-(
+        case THF.BinaryFormula(App,
+            THF.ConnectiveTerm(THF.NonclassicalLongOperator("$$shift", Seq(Left(nterm@THF.FunctionTerm(nom, Seq()))))),
+            rhs
+          ) =>
+          nominal(nom)
+          THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("mshift", Seq()), nterm), convertFormula(rhs))
+
+        // special case for shifter operator @: we need to know the symbol after the operator :-(
+        case THF.BinaryFormula(App,
+            THF.ConnectiveTerm(THF.NonclassicalLongOperator("$$bind", Seq(Left(THF.Variable(nvar))))),
+            rhs
+          ) =>
+          val convertedrhs = convertFormula(rhs)
+          val convertedBody = THF.QuantifiedFormula(THF.^, Seq((nvar, THF.BinaryFormula(THF.FunTyConstructor, THF.FunctionTerm(worldTypeName, Seq.empty), THF.FunctionTerm("$o", Seq.empty)))), convertedrhs)
+          THF.BinaryFormula(App, THF.FunctionTerm("mbind", Seq()), convertedBody)
+
         /* ######################################### */
         /* Standard cases: Recurse embedding. */
         case THF.FunctionTerm(f, args) =>
@@ -273,10 +290,10 @@ object HybridLogicEmbedding extends Embedding {
               case Seq(Left(index0)) => mdiaIndexed(index0)
               case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
             }
-//            case "$$nominal" => parameters match {
-//              case Seq() => str2Fun("mnominal")
-//              case _ => throw new EmbeddingException(s"Unexpected argument to connective '$name' in ${connective.pretty} given.")
-//            }
+            case "$$nominal" => parameters match {
+              case Seq() => str2Fun("mwexists")
+              case _ => throw new EmbeddingException(s"Unexpected argument to connective '$name' in ${connective.pretty} given.")
+            }
             case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
           }
 
@@ -434,6 +451,8 @@ object HybridLogicEmbedding extends Embedding {
       // Then: Define modal operators
       if (isMultiModal) result.appendAll(indexedModalOperatorsTPTPDef())
       else result.appendAll(simpleModalOperatorsTPTPDef())
+
+      result.appendAll(hybridOperatorsTPTPDef())
       /////////////////////////////////////////////////////////////
       // Then: Give mrel properties (sem/syn)
       // write used properties and assign (if semantical)
@@ -536,6 +555,9 @@ object HybridLogicEmbedding extends Embedding {
 
       val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
       nominals.foreach { nom =>
+        if (!typedSymbolsInOriginalProblem.isDefinedAt(nom)) {
+          result.appendAll(nominalTypeTPTPDef(nom))
+        }
         result.appendAll(nominalMetaAxiomTPTPDef(nom))
       }
       result.toSeq
@@ -586,6 +608,13 @@ object HybridLogicEmbedding extends Embedding {
       annotatedTHF(s"thf(mrel_type, type, mrel: $indexTypeName > $worldTypeName > $worldTypeName > $$o).")
     }
 
+    private[this] def nominalTypeTPTPDef(nom: String): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      val name = s"${nom}_type"
+      Seq(
+        annotatedTHF(s"thf(${escapeAtomicWord(name)}, type, ${escapeAtomicWord(nom)} : $worldTypeName > $$o ).")
+      )
+    }
     private[this] def nominalMetaAxiomTPTPDef(nom: String): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       val name = s"${nom}_mnominal"
@@ -624,6 +653,18 @@ object HybridLogicEmbedding extends Embedding {
         annotatedTHF(s"thf(mor_def, definition , ( mor = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) | (B@W) ))))."),
         annotatedTHF(s"thf(mimplies_def, definition , ( mimplies = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) => (B@W) ))))."),
         annotatedTHF(s"thf(mequiv_def, definition , ( mequiv = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) <=> (B@W) )))).")
+      )
+    }
+
+    private[this] def hybridOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF(s"thf(mwexists_type, type, mwexists: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mwexists_def, definition, ( mwexists = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( Phi @ V ))))."),
+        annotatedTHF(s"thf(mshift_type, type, mshift: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mshift_def, definition, ( mshift = (^ [N: $worldTypeName>$$o, Phi:$worldTypeName>$$o, W:$worldTypeName]: ![V:$worldTypeName]: ( (N @ V) => (Phi @ V) ))))."),
+        annotatedTHF(s"thf(mbind_type, type, mbind: (($worldTypeName>$$o)>($worldTypeName>$$o))>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mbind_def, definition, ( mbind = (^ [Body:($worldTypeName>$$o)>($worldTypeName>$$o), W:$worldTypeName]: ( Body @ (^[X:$worldTypeName]: (X = W)) @ W)))).")
       )
     }
 
