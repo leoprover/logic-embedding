@@ -1,7 +1,7 @@
 package leo.modules.embeddings
 
 object Library {
-  final def version: String = "1.2"
+  final def version: String = "1.3"
 
   def embeddingTable: Map[String, Embedding] = {
     Map(
