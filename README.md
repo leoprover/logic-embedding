@@ -37,6 +37,90 @@ problem, suitable parameters are given as properties to the logic specification:
 | `$$pal` | _none_ | |
 | `$$ddl` | `$$system` | Selects which DDL logic system is employed: Carmo and Jones or Åqvist's system E.<br><br>Accepted values: `$$carmoJones` or `$$aqvistE` |
 
+### Examples
+
+#### Logic `$modal`
+The so-called Barcan formula is a modal logic formula that is valid if and only if the quantification domain of the underlying first-order
+modal logic model is non-cumulative.
+
+```
+  tff(modal_k5, logic, $modal == [
+     $constants == $rigid,
+     $quantification == $decreasing,
+     $modalities == [$modal_axiom_K, $modal_axiom_5]
+   ] ).
+
+  tff(bf, conjecture, ( ![X]: ({$box}(f(X))) ) => {$box}(![X]: f(X)) ).
+```
+
+#### Logic `$$hybrid`
+
+```
+  tff(hybrid_s5,logic, $$hybrid == [
+      $constants == $rigid,
+      $quantification == $varying,
+      $modalities == $modal_system_S5
+    ] ).
+
+  tff(1, conjecture, ![X]: {$box}({$$shift(#n)}(
+             {$$bind(#Y)}((Y & p(X))
+                          <=>
+                          ({$$nominal}(n) & p(X))
+                     ))) ).
+```
+
+#### Logic `$$pal`
+
+```
+tff(pal, logic, $$pal == []).
+
+tff(c, conjecture, {$$announce($$formula := p)}( {$$common($$group := [a,b,c,k])}(p) )).
+```
+
+#### Logic `$$ddl`
+
+
+```
+  tff(spec_e, logic, $$ddl == [ $$system == $$aqvistE ] ).
+
+  tff(a1, axiom, {$$obl}(go,$true)).
+  tff(a2, axiom, {$$obl}(tell, go)).
+  tff(a3, axiom, {$$obl}(~tell, ~go)).
+  tff(situation, axiom, ~go). 
+  tff(c, conjecture, {$$obl}(~tell,$true)).
+```
+This example encodes that (a1) you ought to go and help your neighbor, (a2) if you go then you ought to tell him/her that you are coming,
+and (a3) if you don't go, then you ought not tell him/her. It can consistently be inferred that, if you actually don't go, then you ought not
+tell.
+
+### Extended specifications
+
+#### Modal logic `$modal`
+
+Multiple modal operators are defined like ...
+```
+thf(advanced,logic,(
+    $modal ==
+      [ $constants == $rigid,
+        $quantification == $cumulative,
+        $modalities ==
+          [ $modal_system_S5,
+            [#a] == $modal_system_KB,
+            [#b] == $modal_system_K ] ] )).
+```
+Here box operator a is system KB, box operator b is K. Of course, also lists of axiom schemes can be used. All further modal operators are S5 (if existent).
+
+Distinct quantification semantics for each type are defined like ...
+```
+thf(quantification,logic,(
+    $modal ==
+      [ $constants == $rigid,
+        $quantification ==
+          [ $constant,
+            human_type == $varying ],
+        $modalities == $modal_system_S5 ] )).
+```
+Here, every quantification over variables of type `human_type` are varying domain, all others constant domain.
 
 
 ## Usage
@@ -53,7 +137,7 @@ usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <
   -l <logic>
      If <problem file> does not contain a logic specification statement, explicitly set
      the input format to <logic>. Ignored, if <problem file> contains a logic specification statement.
-     Supported <logic>s are: $modal, $alethic_modal, $deontic_modal, $epistemic_modal
+     Supported <logic>s are: $modal, $epistemic_modal, $$ddl, $$pal, $alethic_modal, $$hybrid, $deontic_modal
 
   -p <parameter>
      Pass transformation parameter <parameter> to the embedding procedure.
