@@ -20,9 +20,24 @@ Currently, only modal logics are supported:
 | `$alethic_modal` | Same as `$modal` only that the operators are called `{$necessary}` and `{$possible}` instead (short forms are identical).  |
 | `$deontic` | Same as `$modal` only that the operators are called `{$obligatory}` and `{$permissible}` instead (short forms are identical).  |
 | `$alethic_modal` | Similar to `$modal` only that there is only one operator called `{$knows}` (short forms `[.]`).  |
+| `$$hybrid` | Hybrid logics extend the modal logic family $modal with the notion of nominals, a special kind of atomic formula symbol that is true only in a specific world [2]. The logics represented by $$hybrid are first-order variants of H(E, @, ↓). |
+| `$$pal` | Public announcement logic (PAL) is a propositional epistemic logic that allows for reasoning about knowledge. In contrast to $modal, PAL is a dynamic logic that supports updating the knowledge of agents via so-called announcement operators. |
+| `$$ddl` | Deontic logics are formalisms for reasoning over norms, obligations, permissions and prohibitions. In contrast to modal logics used for this purpose (e.g., modal logic D), dyadic deontic logics (DDLs), named $$ddl, offer a more sophisticated representation of conditional norms using a dyadic obligation operator O(ϕ/ψ). They address paradoxes of other deontic logics in the context of so-called contrary-to-duty (CTD) situations. The concrete DDLs supported are the propositional system by Carmo and Jones and Åqvist’s propositional system E. |
+
+### Logic specifications
+Non-classical logic languages quite commonly admit different concrete logics using the same syntax. In order to chose the exact logic intended for the input
+problem, suitable parameters are given as properties to the logic specification:
+
+| Logic family name  | Parameter | Description |
+| ------------- | ------------- |  ------------- |
+| `$modal` | `$quantification` | Selects whether quantification semantics is varying domains, constant domains, cumulative domains or decreasing domains.<br><br>Accepted values: `$varying`, `$constant`, `$cumulative`, `$decreasing` |
+|  | `$constants` | Selects whether constant and functions symbols are interpreted as rigidor flexible.<br><br> Accepted values: `$rigid`, `$flexible` |
+|  | `$modalities` | Selects the properties for the modal operators.<br><br> Accepted values, for each modality: `$modal_system_X` where `X` ∈ {`K`, `KB`, `K4`, `K5`, `K45`, `KB5`, `D`, `DB`, `D4`, `D5`, `D45`, `T`, `B`, `S4`, `S5`, `S5U`} <br>_or a list of axiom schemes_<br> [`$modal axiom X1` , ..., `$modal axiom Xn` ] `Xi` ∈ {`K`, `T`, `B`, `D`, `4`, `5`, `CD`, `C4`} |
+| `$$hybrid` | _same as `$modal`_ | |
+| `$$pal` | _none_ | |
+| `$$ddl` | `$$system` | Selects which DDL logic system is employed: Carmo and Jones or Åqvist's system E.<br><br>Accepted values: `$$carmoJones` or `$$aqvistE` |
 
 
- More logics will be added soon.
 
 ## Usage
 An executable JAR file is distributed with the most current release. 
