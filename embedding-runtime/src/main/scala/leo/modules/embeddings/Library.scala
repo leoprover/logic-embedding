@@ -10,7 +10,8 @@ object Library {
       "$deontic_modal" -> ModalEmbedding,
       "$epistemic_modal" -> ModalEmbedding,
       "$$ddl" -> DyadicDeonticLogicEmbedding,
-      "$$hybrid" -> HybridLogicEmbedding
+      "$$hybrid" -> HybridLogicEmbedding,
+      "$$pal" -> PublicAnnouncementLogicEmbedding
     )
   }
 }
