@@ -18,7 +18,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.5"
+  override final def version: String = "1.5.1"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -368,14 +368,15 @@ object ModalEmbedding extends Embedding {
     private[this] val modalOperators: mutable.Set[THF.FunctionTerm] = mutable.Set.empty
     private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
     private[this] def multiModal(index: THF.Formula): THF.FunctionTerm = {
-      val index0: THF.FunctionTerm = index match {
-        case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"#$name", args)
-        case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"#$value", Seq.empty)
-        case _ => throw new EmbeddingException("Unsupported index")
-      }
+      val index0 = escapeModalIndex(index)
       modalOperators += index0
       index0
     }
+    private[this] def escapeModalIndex(index: THF.Formula): THF.FunctionTerm = index match {
+        case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"#$name", args)
+        case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"#$value", Seq.empty)
+        case _ => throw new EmbeddingException(s"Unsupported index '${index.pretty}'")
+      }
 
     private[this] val quantifierTypes: mutable.Set[THF.Type] = mutable.Set.empty
     private[this] def quantifierType(typ: THF.Type): Unit = {
@@ -991,6 +992,7 @@ object ModalEmbedding extends Embedding {
       )
     }
 
+    private def isModalAxiomName(name: String): Boolean = name.startsWith("$modal_axiom_")
     private def isModalSystemName(name: String): Boolean = name.startsWith("$modal_system_")
     lazy val modalSystemTable: Map[String, Seq[String]] = Map(
       "$modal_system_K" -> Seq("$modal_axiom_K"),
@@ -1065,14 +1067,24 @@ object ModalEmbedding extends Embedding {
                     }
                   }
                 case "$modalities" => val (default, map) = parseListRHS(rhs)
-                  if (default.nonEmpty) state.setDefault(MODALS, default)
-                  map foreach { case (name, modalspec) =>
-                    val realIndex = name match {
-                      case THF.BinaryFormula(THF.App, THF.FunctionTerm(box, Seq()), index) if box.startsWith("$box") => index
-                      case THF.FunctionTerm(box, Seq(index)) if box.startsWith("$box") => index
-                      case _ => throw new EmbeddingException(s"Modality specification did not start with $$box ... == ...")
+                  if (default.nonEmpty) {
+                    if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec)))
+                      state.setDefault(MODALS, default)
+                    else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[",",", "]")}")
+                  }
+                  map foreach { case (lhs, modalspec) =>
+                    val index0 = lhs match {
+                      case THF.ConnectiveTerm(THF.NonclassicalBox(Some(index))) => index
+                      case THF.ConnectiveTerm(THF.NonclassicalLongOperator(cname, Seq(Left(index))))
+                       if Seq("$box", "$necessary" , "$obligatory" , "$knows").contains(cname) => index
+                      case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
                     }
-                    if (modalspec.nonEmpty) state(MODALS) += (realIndex -> modalspec)
+                    val index = escapeModalIndex(index0)
+                    if (modalspec.nonEmpty) {
+                      if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec)))
+                        state(MODALS) += (index -> modalspec)
+                      else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[",",", "]")}")
+                    }
                   }
                 case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
               }
