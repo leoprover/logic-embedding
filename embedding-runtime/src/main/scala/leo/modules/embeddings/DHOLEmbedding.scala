@@ -190,14 +190,11 @@ object DHOLEmbedding extends Embedding {
           case (x,tp)::variableList =>
             val convertedTp = convertType(tp)
             val bodyTp = THF.QuantifiedFormula(THF.!>, variableList, body)
-            //TODO: prevent name clashes of the F_x variables
-            val pred = THF.QuantifiedFormula(THF.^, Seq(("F_"+x, FuncType(convertedTp, convertType(bodyTp)))),
-              THF.QuantifiedFormula(THF.!, Seq((x, convertedTp)),
-                THF.BinaryFormula(THF.Impl, typePred(tp, TPTP.THF.Variable(x)),
-                  typePred(bodyTp, THF.BinaryFormula(THF.App, TPTP.THF.Variable("F_"+x), THF.Variable(x)))) ))
-            THF.BinaryFormula(THF.App, pred, tm)
+              THF.QuantifiedFormula(THF.!, Seq((x, convertedTp)), THF.BinaryFormula(THF.Impl,
+                typePred(tp, TPTP.THF.Variable(x)), typePred(bodyTp, THF.BinaryFormula(THF.App, tm, THF.Variable(x)))))
           case Nil => typePred(body, tm)
         }
+        // TODO: This code is apparently unreachable, but it shouldn't
         case THF.FunctionTerm("$o", args) if args.isEmpty => atomicTerm(typePredName("bool"))
         case _ => throw new EmbeddingException(s"Formula unsupported by logic '$name': '${typ.pretty}'")
       }
