@@ -5,6 +5,7 @@ object Library {
 
   def embeddingTable: Map[String, Embedding] = {
     Map(
+      "$$dhol" -> DHOLEmbedding,
       "$modal" -> ModalEmbedding,
       "$alethic_modal" -> ModalEmbedding,
       "$deontic_modal" -> ModalEmbedding,
