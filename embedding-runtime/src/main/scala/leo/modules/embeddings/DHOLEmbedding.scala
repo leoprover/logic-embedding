@@ -91,11 +91,8 @@ object DHOLEmbedding extends Embedding {
 
     private[this] def convertFormula(formula: TPTP.THF.Formula): TPTP.THF.Formula = {
       import TPTP.THF.App
-      import leo.modules.input.TPTPParser.thf
 
       formula match {
-        /* ######################################### */
-        /* Standard cases: Recurse embedding. */
         case THF.FunctionTerm(f, args) =>
           val convertedArgs = args.map(convertFormula)
           THF.FunctionTerm(f, convertedArgs)
@@ -103,12 +100,12 @@ object DHOLEmbedding extends Embedding {
         case THF.UnaryFormula(connective, body) =>
           THF.UnaryFormula(connective, convertFormula(body))
 
-        case THF.BinaryFormula(App, left, right) =>
+        case THF.BinaryFormula(conn, left, right) =>
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
-          THF.BinaryFormula(App, convertedLeft, convertedRight)
+          THF.BinaryFormula(conn, convertedLeft, convertedRight)
 
-        case THF.BinaryFormula(_, _, _) | THF.ConnectiveTerm(_) => formula
+        case THF.ConnectiveTerm(_) => formula
 
         case THF.QuantifiedFormula(quantifier, variableList, body) =>
           val convertedVariableList = variableList map {
@@ -124,7 +121,6 @@ object DHOLEmbedding extends Embedding {
           quantifier match {
             case THF.! => THF.QuantifiedFormula(THF.!, convertedVariableList, relativizedBody)
             case THF.? => THF.QuantifiedFormula(THF.?, convertedVariableList, relativizedBody)
-            case THF.^ => THF.QuantifiedFormula(THF.^, convertedVariableList, convertedBody)
             case _ => THF.QuantifiedFormula(quantifier, convertedVariableList, convertedBody)
           }
 
