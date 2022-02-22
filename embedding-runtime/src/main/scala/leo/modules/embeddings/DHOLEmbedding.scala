@@ -185,9 +185,13 @@ object DHOLEmbedding extends Embedding {
         case THF.QuantifiedFormula(THF.!>, vl, body) => vl.toList match {
           case (x,tp)::variableList =>
             val convertedTp = convertType(tp)
+            val simplifiedRes = tm match {
+              case THF.FunctionTerm(s, args) => THF.FunctionTerm(s, args.+:(THF.Variable(x)))
+              case _ => THF.BinaryFormula(THF.App, tm, THF.Variable(x))
+            }
             val bodyTp = THF.QuantifiedFormula(THF.!>, variableList, body)
               THF.QuantifiedFormula(THF.!, Seq((x, convertedTp)), THF.BinaryFormula(THF.Impl,
-                typePred(tp, TPTP.THF.Variable(x)), typePred(bodyTp, THF.BinaryFormula(THF.App, tm, THF.Variable(x)))))
+                typePred(tp, TPTP.THF.Variable(x)), typePred(bodyTp, simplifiedRes)))
           case Nil => typePred(body, tm)
         }
         // TODO: This code is apparently unreachable, but it shouldn't
