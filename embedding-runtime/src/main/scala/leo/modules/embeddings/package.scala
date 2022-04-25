@@ -12,6 +12,18 @@ package object embeddings {
   final class MalformedLogicSpecificationException(val spec: TPTP.AnnotatedFormula) extends RuntimeException
   final class UnspecifiedLogicException extends RuntimeException
 
+  final val tptpDefinedNullaryPredicateSymbols: Seq[String] = Seq("$true", "$false")
+
+  final val tptpDefinedUnaryArithmeticPredicateSymbols: Seq[String] = Seq("$is_int", "$is_rat")
+
+  final val tptpDefinedUnaryArithmeticFunctionSymbols: Seq[String] = Seq("$uminus", "$floor", "$ceiling", "$truncate", "$round",
+  "$is_int", "$is_rat", "$to_int", "$to_rat", "$to_real")
+
+  final val tptpDefinedBinaryArithmeticPredicateSymbols: Seq[String] = Seq("$less", "$lesseq", "$greater", "$greatereq")
+
+  final val tptpDefinedBinaryArithmeticFunctionSymbols: Seq[String] = Seq("$difference", "$sum", "$product", "$quotient",
+    "$quotient_e", "$quotient_t", "$quotient_f", "$remainder_e", "$remainder_t", "$remainder_f")
+
   final def getLogicSpecFromProblem(formulas: Seq[TPTP.AnnotatedFormula]): Option[TPTP.AnnotatedFormula] = {
     formulas.find(f => f.role == "logic")
   }

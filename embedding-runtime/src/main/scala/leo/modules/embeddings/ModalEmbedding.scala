@@ -18,7 +18,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.5.1"
+  override final def version: String = "1.5.2"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -163,8 +163,15 @@ object ModalEmbedding extends Embedding {
         /* ######################################### */
         /* TPTP defined constants that need to be handled specially*/
         // Nullary: $true and $false -> (^[W:mworld]: $true) resp. (^[W:mworld]: $false)
-        case THF.FunctionTerm(f, Seq()) if Seq("$true", "$false").contains(f) =>
+        case THF.FunctionTerm(f, Seq()) if tptpDefinedNullaryPredicateSymbols.contains(f) =>
           thf(s"^[W: $worldTypeName]: $f")
+
+        // Unary: $is_int, $is_rat, etc., see discussion below
+        case THF.BinaryFormula(App, THF.FunctionTerm(f, Seq()), right)
+          if tptpDefinedUnaryArithmeticPredicateSymbols.contains(f) =>
+
+          val convertedRight: TPTP.THF.Formula = convertFormula(right)
+          thf(s"^[W:$worldTypeName]: ($f @ (${convertedRight.pretty}))")
 
         // Binary: $less, $lesseq, $greater, $greatereq -> (^[W:mworld]: ...) as they are rigid constants.
           // This will not work for partially applied function expressions, e.g. (f @ $greater).
@@ -173,7 +180,7 @@ object ModalEmbedding extends Embedding {
           // but we don't know what T is supposed to be. And just embedding $greater to ^[W:mworld]: $greater
           // will not be type-correct.
         case THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm(f, Seq()), left), right)
-          if Seq("$less", "$lesseq", "$greater", "$greatereq").contains(f) =>
+          if tptpDefinedBinaryArithmeticPredicateSymbols.contains(f) =>
 
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
@@ -221,11 +228,18 @@ object ModalEmbedding extends Embedding {
           val convertedElements: Seq[TPTP.THF.Formula] = elements.map(convertFormula)
           THF.Tuple(convertedElements)
 
-        case THF.ConditionalTerm(condition, thn, els) =>
+        case THF.ConditionalTerm(condition, thn, els) => // TODO: Will only work for $ite where the body (then and else)
+                                                         // are formulas
           val convertedCondition: TPTP.THF.Formula = convertFormula(condition)
           val convertedThn: TPTP.THF.Formula = convertFormula(thn)
           val convertedEls: TPTP.THF.Formula = convertFormula(els)
-          THF.ConditionalTerm(convertedCondition, convertedThn, convertedEls)
+          localFormulaExists = true
+          val conditionalBody = THF.ConditionalTerm(
+            THF.BinaryFormula(THF.App, convertedCondition, THF.Variable("ITEWORLD")),
+            THF.BinaryFormula(THF.App, convertedThn, THF.Variable("ITEWORLD")),
+            THF.BinaryFormula(THF.App, convertedEls, THF.Variable("ITEWORLD")))
+          THF.QuantifiedFormula(THF.^, Seq(("ITEWORLD", THF.FunctionTerm(worldTypeName, Seq.empty))), conditionalBody)
+
 
         case THF.LetTerm(typing, binding, body) => // This will probably change as the parse tree of LetTerms will still change.
           val convertedTyping: Map[String, TPTP.THF.Type] = typing.map(a => (a._1, convertType(a._2)))
