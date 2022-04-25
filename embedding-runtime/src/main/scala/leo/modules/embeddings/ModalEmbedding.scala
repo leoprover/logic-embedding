@@ -258,13 +258,13 @@ object ModalEmbedding extends Embedding {
     }
 
     private[this] final val inlineMifDef: THF.Formula =
-      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o, W: $worldTypeName]: (mimplies @ (B @ W) @ (A @ W))")
+      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mimplies @ B @ A)")
     private[this] final val inlineMniffDef: THF.Formula =
-      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o, W: $worldTypeName]: (mnot @ (mequiv @ (A @ W) @ (B @ W)))")
+      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mequiv @ A @ B))")
     private[this] final val inlineMnorDef: THF.Formula =
-      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o, W: $worldTypeName]: (mnot @ (mor @ (A @ W) @ (B @ W)))")
+      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mor @ A @ B))")
     private[this] final val inlineMnandDef: THF.Formula =
-      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o, W: $worldTypeName]: (mnot @ (mand @ (A @ W) @ (B @ W)))")
+      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mand @ A @ B))")
 
     private[this] def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
       connective match {
