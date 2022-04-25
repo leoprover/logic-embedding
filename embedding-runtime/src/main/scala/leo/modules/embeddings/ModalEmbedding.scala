@@ -87,16 +87,16 @@ object ModalEmbedding extends Embedding {
       import leo.modules.tptputils.SyntaxTransform.transformProblem
       val problemTHF = transformProblem(TPTP.AnnotatedFormula.FormulaType.THF, problem, addMissingTypeDeclarations = true)
       val formulas = problemTHF.formulas
-      val (spec, properFormulas) = splitInput(formulas)
+
+      val (spec,sortFormulas,typeFormulas,definitionFormulas,otherFormulas) = splitInputByDifferentKindOfFormulas(formulas)
       createState(spec)
-      val (typeFormulas, nonTypeFormulas) = properFormulas.partition(_.role == "type")
-      val (definitionFormulas, otherFormulas) = nonTypeFormulas.partition(_.role == "definition")
       val convertedTypeFormulas = typeFormulas.map(convertTypeFormula)
       val convertedDefinitionFormulas = definitionFormulas.map(convertDefinitionFormula)
       val convertedOtherFormulas = otherFormulas.map(convertAnnotatedFormula)
       val generatedMetaFormulas: Seq[AnnotatedFormula] = generateMetaFormulas()
 
-      val result = generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
+      // new user types first (sort formulas), then our definitions, then all other formulas
+      val result = sortFormulas ++ generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
       TPTP.Problem(problem.includes, result, Map.empty)
     }
 
@@ -156,7 +156,7 @@ object ModalEmbedding extends Embedding {
     }
 
     private def convertFormula(formula: TPTP.THF.Formula): TPTP.THF.Formula = {
-      import TPTP.THF.App
+      import TPTP.THF.{App, Eq, Neq}
       import modules.input.TPTPParser.thf
 
       formula match {
@@ -213,6 +213,12 @@ object ModalEmbedding extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           THF.BinaryFormula(App, convertedLeft, convertedRight)
 
+        case THF.BinaryFormula(equalityLike, left, right) if Seq(Eq, Neq).contains(equalityLike) =>
+          val convertedLeft: TPTP.THF.Formula = convertFormula(left)
+          val convertedRight: TPTP.THF.Formula = convertFormula(right)
+          val body = THF.BinaryFormula(equalityLike, convertedLeft, convertedRight)
+          THF.QuantifiedFormula(THF.^, Seq(("W", THF.FunctionTerm(worldTypeName, Seq.empty))), body)
+
         /* The following case also subsumes where `connective` is a non-classical connective. */
         case THF.BinaryFormula(connective, left, right) =>
           val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
@@ -251,17 +257,27 @@ object ModalEmbedding extends Embedding {
       }
     }
 
+    private[this] final val inlineMifDef: THF.Formula =
+      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o, W: $worldTypeName]: (mimplies @ (B @ W) @ (A @ W))")
+    private[this] final val inlineMniffDef: THF.Formula =
+      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o, W: $worldTypeName]: (mnot @ (mequiv @ (A @ W) @ (B @ W)))")
+    private[this] final val inlineMnorDef: THF.Formula =
+      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o, W: $worldTypeName]: (mnot @ (mor @ (A @ W) @ (B @ W)))")
+    private[this] final val inlineMnandDef: THF.Formula =
+      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o, W: $worldTypeName]: (mnot @ (mand @ (A @ W) @ (B @ W)))")
+
     private[this] def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
       connective match {
         case THF.~ => str2Fun("mnot")
         case THF.<=> => str2Fun("mequiv")
         case THF.Impl => str2Fun("mimplies")
-        case THF.<= => str2Fun("mif")
-        case THF.<~> => str2Fun("mniff")
-        case THF.~| => str2Fun("mnor")
-        case THF.~& => str2Fun("mnand")
         case THF.| => str2Fun("mor")
         case THF.& => str2Fun("mand")
+        // other connectives of TPTP are encoded in terms of the above
+        case THF.<= => inlineMifDef
+        case THF.<~> => inlineMniffDef
+        case THF.~| => inlineMnorDef
+        case THF.~& => inlineMnandDef
         /// Non-classical connectives BEGIN
         // Box operator
         case THF.NonclassicalBox(index) => index match {
@@ -290,8 +306,7 @@ object ModalEmbedding extends Embedding {
 
         /// Non-classical connectives END
         // Error cases
-        case THF.Eq | THF.Neq => throw new EmbeddingException(s"Equality and inequality are not supported (due to inclarities with equality in modal logic). Please consider axiomatizing your own equality predicate in the problem.")
-        case THF.App => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
+        case THF.App | THF.Eq | THF.Neq => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
         case THF.:= => throw new EmbeddingException(s"Unexpected assignment operator used as connective.")
         case THF.== => throw new EmbeddingException(s"Unexpected meta-logical identity operator used as connective.")
         case _ => throw new EmbeddingException(s"Unexpected type constructor used as connective: '${connective.pretty}'")
@@ -346,7 +361,7 @@ object ModalEmbedding extends Embedding {
           val convertedTyping = TPTP.THF.Typing(symbol, convertType(typ))
 //          typedSymbolsInOriginalProblem += (symbol -> typ)
           TPTP.THFAnnotated(name, role, convertedTyping, annotations)
-        case TPTP.THFAnnotated(_, _, _, _) => throw new EmbeddingException(s"Unexpected error: Type conversion called on non-type-statement.")
+        case TPTP.THFAnnotated(_, _, _, _) => throw new EmbeddingException(s"Malformed type definition in formula '${formula.name}', aborting.")
         case _ => throw new EmbeddingException(s"Only embedding of THF files supported.")
       }
     }

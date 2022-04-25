@@ -2,7 +2,7 @@ package leo
 package modules
 
 import leo.datastructures.TPTP
-import leo.datastructures.TPTP.AnnotatedFormula
+import leo.datastructures.TPTP.{AnnotatedFormula, THF}
 
 import java.util.logging.Logger
 
@@ -54,6 +54,50 @@ package object embeddings {
       case BinaryFormula(ProductTyConstructor, left, right) =>
         s"prod_l__${serializeType(left)}_${serializeType(right)}__r_"
       case _ => throw new IllegalArgumentException()
+    }
+
+  }
+
+  type LogicSpec = AnnotatedFormula
+  type SortDecl = AnnotatedFormula
+  type TypeDecl = AnnotatedFormula
+  type DefDecl = AnnotatedFormula
+  type RemainingFormulas = AnnotatedFormula
+  protected[embeddings] final def splitInputByDifferentKindOfFormulas(input: Seq[AnnotatedFormula]):
+  (LogicSpec, Seq[SortDecl], Seq[TypeDecl], Seq[DefDecl], Seq[RemainingFormulas]) = {
+    import collection.mutable
+    var logicSpec: mutable.Buffer[LogicSpec] = mutable.Buffer.empty
+    val sortDecls: mutable.Buffer[SortDecl] = mutable.Buffer.empty
+    val typeDecls: mutable.Buffer[TypeDecl] = mutable.Buffer.empty
+    val defDecls: mutable.Buffer[DefDecl] = mutable.Buffer.empty
+    val remainingFormulas: mutable.Buffer[RemainingFormulas] = mutable.Buffer.empty
+
+    input.foreach { f =>
+      f.role match {
+        case "logic" => logicSpec.append(f)
+        case "type" => f match {
+          case TPTP.THFAnnotated(_, _, formula, _) => formula match {
+            case THF.Typing(_, typ) => typ match {
+              case THF.FunctionTerm("$tType", Seq()) => sortDecls.append(f)
+              case _ => typeDecls.append(f)
+            }
+            case _ => throw new EmbeddingException(s"Malformed type definition in formula '${f.name}', aborting.")
+          }
+          case _ => throw new EmbeddingException(s"Only embedding of THF files supported. Aborting")
+        }
+        case "definition" => defDecls.append(f)
+        case _ => remainingFormulas.append(f)
+      }
+    }
+
+    if (logicSpec.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")
+    else {
+      val spec = if (logicSpec.size > 1) {
+        Logger.getGlobal.warning(s"More than one logic specification given; only using the first one ('${logicSpec.head.name}'), " +
+          s"the remaining ones are ignored.")
+        logicSpec.head
+      } else logicSpec.head
+      (spec, sortDecls.toSeq, typeDecls.toSeq, defDecls.toSeq, remainingFormulas.toSeq)
     }
 
   }
