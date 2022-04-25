@@ -5,6 +5,8 @@ package embeddings
 import datastructures.{FlexMap, TPTP}
 import TPTP.{AnnotatedFormula, THF}
 
+import java.util.logging.Logger
+
 object ModalEmbedding extends Embedding {
   object ModalEmbeddingOption extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
@@ -213,7 +215,14 @@ object ModalEmbedding extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           THF.BinaryFormula(App, convertedLeft, convertedRight)
 
+        /* = and != are extra cases so we don't need to introduce defined symbols for them. Only works for first-order equality. */
         case THF.BinaryFormula(equalityLike, left, right) if Seq(Eq, Neq).contains(equalityLike) =>
+          if (state.getDefault(DOMAIN).isDefined && state.getDefault(DOMAIN).get != DOMAIN_CONSTANT) {
+            Logger.getGlobal.warning("Equality used in modal logic problem which non-constant domains. Proceed with care, this may lead to strange results.")
+          }
+          if (state.getDefault(RIGIDITY).isDefined && state.getDefault(RIGIDITY).get != RIGIDITY_RIGID) {
+            Logger.getGlobal.warning("Equality used in modal logic problem which flexible constants. Proceed with care, this may lead to strange results.")
+          }
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           val body = THF.BinaryFormula(equalityLike, convertedLeft, convertedRight)
