@@ -12,7 +12,8 @@ object Library {
       "$epistemic_modal" -> ModalEmbedding,
       "$$ddl" -> DyadicDeonticLogicEmbedding,
       "$$hybrid" -> HybridLogicEmbedding,
-      "$$pal" -> PublicAnnouncementLogicEmbedding
+      "$$pal" -> PublicAnnouncementLogicEmbedding,
+      "$$normativeDSL" -> NormativeDSLEmbedding
     )
   }
 }

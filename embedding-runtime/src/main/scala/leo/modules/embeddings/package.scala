@@ -2,7 +2,7 @@ package leo
 package modules
 
 import leo.datastructures.TPTP
-import leo.datastructures.TPTP.{AnnotatedFormula, THF}
+import leo.datastructures.TPTP.{AnnotatedFormula, TFF, TFFAnnotated, THF}
 
 import java.util.logging.Logger
 
@@ -66,7 +66,7 @@ package object embeddings {
   protected[embeddings] final def splitInputByDifferentKindOfFormulas(input: Seq[AnnotatedFormula]):
   (LogicSpec, Seq[SortDecl], Seq[TypeDecl], Seq[DefDecl], Seq[RemainingFormulas]) = {
     import collection.mutable
-    var logicSpec: mutable.Buffer[LogicSpec] = mutable.Buffer.empty
+    val logicSpec: mutable.Buffer[LogicSpec] = mutable.Buffer.empty
     val sortDecls: mutable.Buffer[SortDecl] = mutable.Buffer.empty
     val typeDecls: mutable.Buffer[TypeDecl] = mutable.Buffer.empty
     val defDecls: mutable.Buffer[DefDecl] = mutable.Buffer.empty
@@ -88,6 +88,72 @@ package object embeddings {
         case "definition" => defDecls.append(f)
         case _ => remainingFormulas.append(f)
       }
+    }
+
+    if (logicSpec.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")
+    else {
+      val spec = if (logicSpec.size > 1) {
+        Logger.getGlobal.warning(s"More than one logic specification given; only using the first one ('${logicSpec.head.name}'), " +
+          s"the remaining ones are ignored.")
+        logicSpec.head
+      } else logicSpec.head
+      (spec, sortDecls.toSeq, typeDecls.toSeq, defDecls.toSeq, remainingFormulas.toSeq)
+    }
+  }
+
+  /////////// TFF specific split
+  protected[embeddings] final def splitTFFInput(input: Seq[AnnotatedFormula]): (TFFAnnotated, Seq[TFFAnnotated]) = {
+    import collection.mutable
+    val logicSpecs: mutable.Buffer[TFFAnnotated] = mutable.Buffer.empty
+    val otherFormulas: mutable.Buffer[TFFAnnotated] = mutable.Buffer.empty
+
+    input.foreach {
+      case f@TFFAnnotated(_, role, _, _) => role match {
+        case "logic" => logicSpecs.append(f)
+        case _ => otherFormulas.append(f)
+      }
+      case f => throw new EmbeddingException(s"TFF formula expected but ${f.formulaType.toString} formula given. Aborting.")
+    }
+
+    if (logicSpecs.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")
+    else {
+      val spec = if (logicSpecs.size > 1) {
+        Logger.getGlobal.warning(s"More than one logic specification given; only using the first one ('${logicSpecs.head.name}'), " +
+          s"the remaining ones are ignored.")
+        logicSpecs.head
+      } else logicSpecs.head
+      (spec, otherFormulas.toSeq)
+    }
+  }
+
+  type TFFLogicSpec = TFFAnnotated
+  type TFFSortDecl = TFFAnnotated
+  type TFFTypeDecl = TFFAnnotated
+  type TFFDefDecl = TFFAnnotated
+  type TFFRemainingFormulas = TFFAnnotated
+  protected[embeddings] final def splitTFFInputByDifferentKindOfFormulas(input: Seq[AnnotatedFormula]):
+  (TFFLogicSpec, Seq[TFFSortDecl], Seq[TFFTypeDecl], Seq[TFFDefDecl], Seq[TFFRemainingFormulas]) = {
+    import collection.mutable
+    val logicSpec: mutable.Buffer[TFFLogicSpec] = mutable.Buffer.empty
+    val sortDecls: mutable.Buffer[TFFSortDecl] = mutable.Buffer.empty
+    val typeDecls: mutable.Buffer[TFFTypeDecl] = mutable.Buffer.empty
+    val defDecls: mutable.Buffer[TFFDefDecl] = mutable.Buffer.empty
+    val remainingFormulas: mutable.Buffer[TFFRemainingFormulas] = mutable.Buffer.empty
+
+    input.foreach {
+      case f@TFFAnnotated(_, role, formula, _) => role match {
+        case "logic" => logicSpec.append(f)
+        case "type" => formula match {
+          case TFF.Typing(_, typ) => typ match {
+            case TFF.AtomicType("$tType", Seq()) => sortDecls.append(f)
+            case _ => typeDecls.append(f)
+          }
+          case _ => throw new EmbeddingException(s"Malformed type definition in formula '${f.name}', aborting.")
+        }
+        case "definition" => defDecls.append(f)
+        case _ => remainingFormulas.append(f)
+      }
+      case f => throw new EmbeddingException(s"TFF formula expected but ${f.formulaType.toString} formula given. Aborting.")
     }
 
     if (logicSpec.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")
