@@ -11,7 +11,7 @@ import java.io.{File, FileNotFoundException, PrintWriter}
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
-  final val version: Double = 1.6
+  final val version: String = "1.7.1"
 
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None
