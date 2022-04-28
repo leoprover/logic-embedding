@@ -13,7 +13,7 @@ object Library {
       "$$ddl" -> DyadicDeonticLogicEmbedding,
       "$$hybrid" -> HybridLogicEmbedding,
       "$$pal" -> PublicAnnouncementLogicEmbedding,
-      "$$normativeDSL" -> NormativeDSLEmbedding
+      "$$normative" -> NormativeDSLEmbedding
     )
   }
 }

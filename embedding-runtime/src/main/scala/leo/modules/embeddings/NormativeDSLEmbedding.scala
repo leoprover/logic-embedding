@@ -12,7 +12,7 @@ object NormativeDSLEmbedding extends Embedding {
 
   override final type OptionType = NormativeDSLEmbeddingParameter.type
 
-  override final val name: String = "$$normativeDSL"
+  override final val name: String = "$$normative"
   override final val version: String = "1.0"
   override final def embeddingParameter: NormativeDSLEmbeddingParameter.type = NormativeDSLEmbeddingParameter
 
@@ -92,7 +92,7 @@ object NormativeDSLEmbedding extends Embedding {
           val convertedEls = convertTerm(els)
           TFF.ConditionalFormula(convertedCondition, convertedThn, convertedEls)
         case TFF.LetFormula(typing, binding, body) =>
-          val convertedBinding = binding // TODO
+          val convertedBinding = binding.map{ case (l,r) => (convertTerm(l), convertTerm(r))}
           val convertedBody = convertTerm(body)
           TFF.LetFormula(typing, convertedBinding, convertedBody)
 
@@ -112,20 +112,23 @@ object NormativeDSLEmbedding extends Embedding {
         case f@TFF.NonclassicalLongOperator(name, parameters) =>
           val targetIndex: Option[TFF.Term] = parameters match {
             case Seq() => None
-            case Seq(Right((TFF.AtomicTerm("bearer", Seq()), idx))) => Some(idx)
+            case Seq(Right((TFF.AtomicTerm("$bearer", Seq()), idx))) => Some(idx)
             case _ => throw new EmbeddingException(s"Unexpected parameters in NCL connective '${f.pretty}'.")
           }
           name match {
             case "$obligation" => formula.args match {
               case Seq(left, right) => TFF.BinaryFormula(TFF.Impl, left, TFF.NonclassicalPolyaryFormula(TFF.NonclassicalBox(targetIndex), Seq(right)))
+              case Seq(body) => TFF.BinaryFormula(TFF.Impl, TFF.AtomicFormula("$true", Seq.empty), TFF.NonclassicalPolyaryFormula(TFF.NonclassicalBox(targetIndex), Seq(body)))
               case _ => throw new EmbeddingException(s"NCL expression '${formula.pretty}' with unexpected number of arguments.")
             }
             case "$prohibition" => formula.args match {
               case Seq(left, right) => TFF.BinaryFormula(TFF.Impl, left, TFF.NonclassicalPolyaryFormula(TFF.NonclassicalBox(targetIndex), Seq(TFF.UnaryFormula(TFF.~, right))))
+              case Seq(body) => TFF.BinaryFormula(TFF.Impl, TFF.AtomicFormula("$true", Seq.empty), TFF.NonclassicalPolyaryFormula(TFF.NonclassicalBox(targetIndex), Seq(TFF.UnaryFormula(TFF.~, body))))
               case _ => throw new EmbeddingException(s"NCL expression '${formula.pretty}' with unexpected number of arguments.")
             }
             case "$permission" => formula.args match {
               case Seq(left, right) => TFF.BinaryFormula(TFF.Impl, left, TFF.NonclassicalPolyaryFormula(TFF.NonclassicalDiamond(targetIndex), Seq(right)))
+              case Seq(body) => TFF.BinaryFormula(TFF.Impl, TFF.AtomicFormula("$true", Seq.empty), TFF.NonclassicalPolyaryFormula(TFF.NonclassicalDiamond(targetIndex), Seq(body)))
               case _ => throw new EmbeddingException(s"NCL expression '${formula.pretty}' with unexpected number of arguments.")
             }
             case "$constitutive" => formula.args match {
@@ -138,7 +141,14 @@ object NormativeDSLEmbedding extends Embedding {
     }
     private[this] def convertNCLFormulaToDDL(formula: TFF.NonclassicalPolyaryFormula): TFF.Formula = ???
 
-    private[this] def generateTargetLogicSpec(): Seq[TFFAnnotated] = Seq()
+    private[this] def generateTargetLogicSpec(): Seq[TFFAnnotated] = {
+      import input.TPTPParser.annotatedTFF
+      val spec = targetLogic.get match {
+        case SDL => annotatedTFF("tff(target_logic, logic, $modal == [$quantification == $constant, $constants == $rigid, $modalities == $modal_system_D]).")
+        case DDL => annotatedTFF("tff(target_logic, logic, $$ddl == [$$system == $$carmoJones]).")
+      }
+      Seq(spec)
+    }
 
     private[this] def createState(spec: TPTP.TFFAnnotated): Unit = {
       spec.formula match {
@@ -146,7 +156,7 @@ object NormativeDSLEmbedding extends Embedding {
           spec0 foreach {
             case TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(propertyName, Seq()), rhs)) =>
               propertyName match {
-                case "$$logic" => rhs match {
+                case "$logic" => rhs match {
                   case TFF.AtomicTerm(value, Seq()) =>
                     value match {
                       case "$SDL" => targetLogic = Some(SDL)
