@@ -42,7 +42,8 @@ object NormativeDSLEmbedding extends Embedding {
 
     sealed abstract class TargetLogicFormalism
     final case object SDL extends TargetLogicFormalism
-    final case object DDL extends TargetLogicFormalism
+    final case object AqvistE extends TargetLogicFormalism
+    final case object CarmoJones extends TargetLogicFormalism
     private[this] var targetLogic: Option[TargetLogicFormalism] = None
 
     def apply(): TPTP.Problem = {
@@ -73,7 +74,7 @@ object NormativeDSLEmbedding extends Embedding {
         case f@TFF.NonclassicalPolyaryFormula(_, _) =>
           targetLogic.get match {
             case SDL => convertNCLFormulaToSDL(f)
-            case DDL => convertNCLFormulaToDDL(f)
+            case AqvistE | CarmoJones => convertNCLFormulaToDDL(f)
           }
 
         case TFF.QuantifiedFormula(quantifier, variableList, body) =>
@@ -179,7 +180,8 @@ object NormativeDSLEmbedding extends Embedding {
       import input.TPTPParser.annotatedTFF
       val spec = targetLogic.get match {
         case SDL => annotatedTFF("tff(target_logic, logic, $modal == [$quantification == $constant, $constants == $rigid, $modalities == $modal_system_D]).")
-        case DDL => annotatedTFF("tff(target_logic, logic, $$ddl == [$$system == $$aqvistE]).")
+        case AqvistE => annotatedTFF("tff(target_logic, logic, $$ddl == [$$system == $$aqvistE]).")
+        case CarmoJones => annotatedTFF("tff(target_logic, logic, $$ddl == [$$system == $$carmoJones]).")
       }
       Seq(spec)
     }
@@ -193,8 +195,9 @@ object NormativeDSLEmbedding extends Embedding {
                 case "$logic" => rhs match {
                   case TFF.AtomicTerm(value, Seq()) =>
                     value match {
-                      case "$SDL" => targetLogic = Some(SDL)
-                      case "$DDL" => targetLogic = Some(DDL)
+                      case "$$sdl" => targetLogic = Some(SDL)
+                      case "$$aqvistE" => targetLogic = Some(AqvistE)
+                      case "$$carmoJones" => targetLogic = Some(CarmoJones)
                       case _ => throw new EmbeddingException(s"Unknown property value '$value' for property '$propertyName' in logic specification ${spec.pretty}")
                     }
                   case _ => throw new EmbeddingException(s"Malformed property value '${rhs.pretty}' for property '$propertyName' in logic specification ${spec.pretty}")
