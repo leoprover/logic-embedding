@@ -20,7 +20,7 @@ lazy val runtime = (project in file("embedding-runtime"))
 	.settings(
 	  commonSettings,
     name := "logic-embedding-runtime",
-    version := "1.6.1",
+    version := "1.7.3",
     assembly/assemblyOption := (assembly/assemblyOption).value.copy(includeScala = false),
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
@@ -33,7 +33,7 @@ lazy val app = (project in file("embedding-app"))
 	.settings(
 	  commonSettings,
     name := "logic-embedding-app",
-    version := "1.7.2",
+    version := "1.7.3",
     Compile/mainClass := Some("leo.modules.EmbeddingApp"),
     assembly/mainClass := Some("leo.modules.EmbeddingApp"),
     assembly/test := {},
