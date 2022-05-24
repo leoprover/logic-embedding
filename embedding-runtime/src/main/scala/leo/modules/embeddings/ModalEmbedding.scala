@@ -20,7 +20,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.5.2"
+  override final def version: String = "1.5.3"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -99,7 +99,20 @@ object ModalEmbedding extends Embedding {
 
       // new user types first (sort formulas), then our definitions, then all other formulas
       val result = sortFormulas ++ generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
-      TPTP.Problem(problem.includes, result, Map.empty)
+      // maybe add comments about warnings etc. in comments. If so, add them to very first formula in output.
+      val updatedComments =
+        if (result.isEmpty || warnings.isEmpty) problem.formulaComments
+        else {
+          val firstFormula = result.head
+          val existingCommentsOfFirstFormula = problem.formulaComments.get(firstFormula.name)
+          val newEntry = existingCommentsOfFirstFormula match {
+            case Some(value) => warnings.toSeq.map(TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, _)) ++ value
+            case None => warnings.toSeq.map(TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, _))
+          }
+          problem.formulaComments + (firstFormula.name -> newEntry)
+        }
+
+      TPTP.Problem(problem.includes, result, updatedComments)
     }
 
     def convertDefinitionFormula(formula: AnnotatedFormula): AnnotatedFormula = {
@@ -218,10 +231,12 @@ object ModalEmbedding extends Embedding {
         /* = and != are extra cases so we don't need to introduce defined symbols for them. Only works for first-order equality. */
         case THF.BinaryFormula(equalityLike, left, right) if Seq(Eq, Neq).contains(equalityLike) =>
           if (state.getDefault(DOMAIN).isDefined && state.getDefault(DOMAIN).get != DOMAIN_CONSTANT) {
-            Logger.getGlobal.warning("Equality used in modal logic problem which non-constant domains. Proceed with care, this may lead to strange results.")
+            warnings.append(" WARNING: Equality used in modal logic problem with non-constant domains. Proceed with care, this may lead to strange results.")
+            Logger.getGlobal.warning("Equality used in modal logic problem with non-constant domains. Proceed with care, this may lead to strange results.")
           }
           if (state.getDefault(RIGIDITY).isDefined && state.getDefault(RIGIDITY).get != RIGIDITY_RIGID) {
-            Logger.getGlobal.warning("Equality used in modal logic problem which flexible constants. Proceed with care, this may lead to strange results.")
+            warnings.append(" WARNING: Equality used in modal logic problem with flexible constants. Proceed with care, this may lead to strange results.")
+            Logger.getGlobal.warning("Equality used in modal logic problem with flexible constants. Proceed with care, this may lead to strange results.")
           }
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
@@ -266,13 +281,13 @@ object ModalEmbedding extends Embedding {
       }
     }
 
-    private[this] final val inlineMifDef: THF.Formula =
+    private[this] val inlineMifDef: THF.Formula =
       modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mimplies @ B @ A)")
-    private[this] final val inlineMniffDef: THF.Formula =
+    private[this] val inlineMniffDef: THF.Formula =
       modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mequiv @ A @ B))")
-    private[this] final val inlineMnorDef: THF.Formula =
+    private[this] val inlineMnorDef: THF.Formula =
       modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mor @ A @ B))")
-    private[this] final val inlineMnandDef: THF.Formula =
+    private[this] val inlineMnandDef: THF.Formula =
       modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mand @ A @ B))")
 
     private[this] def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
@@ -399,6 +414,9 @@ object ModalEmbedding extends Embedding {
     // Local embedding state
     ///////////////////////////////////////////////////
     import collection.mutable
+
+    // For warnings that should go inside the output file
+    private[this] val warnings: mutable.Buffer[String] = mutable.Buffer.empty
 
     private[this] var localFormulaExists = false
     private[this] var globalFormulaExists = false
