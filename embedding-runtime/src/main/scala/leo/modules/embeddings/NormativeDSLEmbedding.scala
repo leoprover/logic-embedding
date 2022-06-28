@@ -21,8 +21,8 @@ object NormativeDSLEmbedding extends Embedding {
     val spec: StringBuilder = new StringBuilder
     spec.append("thf(logic_spec, logic, (")
     spec.append(s"$name == [")
-    spec.append("$$logic == ")
-    specs.get("$$logic") match {
+    spec.append("$logic == ")
+    specs.get("$logic") match {
       case Some(value) => spec.append(value)
       case None => throw new EmbeddingException("Not enough logic specification parameters given.")
     }
