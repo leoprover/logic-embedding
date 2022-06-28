@@ -172,7 +172,7 @@ In case of questions or comments, feel free to contact Alexander Steen (alexande
 The modal logic embedding is an extended and consolidated tool inspired by Tobias Gleißner's embedding tool at the leoprover/embed_modal repository.
 This version makes use of the `scala-tptp-parser` library from leoprover/scala-tptp-parser that is much faster, in particular for larger input problems.
 
-[^1]: A. Steen, D. Fuenmayor. Bridging between LegalRuleML and TPTP for Automated Normative Reasoning. Manuscript submitted to the 6th International Joint Conference on Rules and Reasoning
-Berlin, 26-28 September 2022
+
+[^1]: A. Steen, D. Fuenmayor. Bridging between LegalRuleML and TPTP for Automated Normative Reasoning. Manuscript submitted to the 6th International Joint Conference on Rules and Reasoning Berlin, 26-28 September 2022
 [^2]: A. Steen. An Extensible Logic Embedding Tool for Lightweight Non-Classical Reasoning. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). Accepted for publication.
-[^2]: A. Steen, D. Fuenmayor, T. Gleißner, G. Sutcliffe and C. Benzmüller. Automated Reasoning in Non-classical Logics\\in the TPTP World. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). Accepted for publication.
+[^3]: A. Steen, D. Fuenmayor, T. Gleißner, G. Sutcliffe and C. Benzmüller. Automated Reasoning in Non-classical Logics in the TPTP World. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). Accepted for publication.
