@@ -6,6 +6,7 @@ import datastructures.{FlexMap, TPTP}
 import TPTP.{AnnotatedFormula, THF}
 
 import java.util.logging.Logger
+import scala.collection.mutable
 
 object ModalEmbedding extends Embedding {
   object ModalEmbeddingOption extends Enumeration {
@@ -27,7 +28,7 @@ object ModalEmbedding extends Embedding {
   private[this] final val defaultModalitiesSpec = "$modal_system_K"
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated = {
     import modules.input.TPTPParser.annotatedTHF
-    val spec: StringBuilder = new StringBuilder
+    val spec: mutable.StringBuilder = new mutable.StringBuilder
     spec.append("thf(logic_spec, logic, (")
     spec.append("$modal == [")
     spec.append("$constants == "); spec.append(specs.getOrElse("$constants", defaultConstantSpec)); spec.append(",")
