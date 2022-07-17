@@ -20,7 +20,7 @@ object TemporalLogicEmbedding extends Embedding {
   override type OptionType = TemporalLogicEmbeddingOption.type
   override final def embeddingParameter: TemporalLogicEmbeddingOption.type = TemporalLogicEmbeddingOption
 
-  override final def name: String = "temporal"
+  override final val name: String = "temporal"
   override final def version: String = "1.0"
 
   private[this] final val defaultConstantSpec = "$rigid"
@@ -307,7 +307,7 @@ object TemporalLogicEmbedding extends Embedding {
         // temporal operators
         case THF.NonclassicalLongOperator(name, parameters) =>
           name match {
-            case "$always" => parameters match {
+            case "$henceforth" => parameters match {
               case Seq() => str2Fun("mbox_future")
               case _ => throw new EmbeddingException(s"No index is allowed in G operator, but parameters '${parameters.toString()}' was given.")
             }
@@ -776,7 +776,7 @@ object TemporalLogicEmbedding extends Embedding {
     private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
       assert(spec.role == "logic")
       spec.formula match {
-        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(name, Seq()),THF.Tuple(spec0))) if Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal") contains name =>
+        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm("$temporal", Seq()),THF.Tuple(spec0))) =>
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
