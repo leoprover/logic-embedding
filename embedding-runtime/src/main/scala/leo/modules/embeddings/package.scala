@@ -210,6 +210,14 @@ package object embeddings {
     (default, mapping)
   }
 
+  protected[embeddings] def parseListRHSNew(rhs: TPTP.THF.Formula): (Seq[TPTP.THF.Formula], Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]]) = {
+    import TPTP.THF.Tuple
+    rhs match {
+      case Tuple(entries) if entries.nonEmpty => parseTupleListRHSNew(entries)
+      case _ => (Seq(rhs), Map.empty)
+    }
+  }
+
   protected[embeddings] def parseListRHS(rhs: TPTP.THF.Formula): (Seq[String], Map[TPTP.THF.Formula, Seq[String]]) = {
     import TPTP.THF.{FunctionTerm, Tuple}
     rhs match {
@@ -243,6 +251,33 @@ package object embeddings {
         }
 
       case e => throw new EmbeddingException(s"Tuple entry of semantics specification could not be read: '${e.pretty}'")
+    }
+    (default, mapping)
+  }
+
+
+  protected[embeddings] def parseTupleListRHSNew(tupleElements: Seq[TPTP.THF.Formula]): (Seq[TPTP.THF.Formula], Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]]) = {
+    import TPTP.THF.{BinaryFormula, Tuple}
+    var default: Seq[TPTP.THF.Formula] = Seq.empty
+    var mapping: Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]] = Map.empty
+
+    tupleElements foreach {
+      case bf@BinaryFormula(TPTP.THF.==, name, Tuple(entries)) if entries.nonEmpty =>
+        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
+        else {
+          val (convertedEntries, convertedEntriesMap) = parseTupleListRHSNew(entries)
+          if (convertedEntriesMap.isEmpty) {
+            mapping = mapping + (name -> convertedEntries)
+          } else {
+            throw new EmbeddingException(s"Could not read semantic specification '${bf.pretty}'.")
+          }
+        }
+      case BinaryFormula(TPTP.THF.==, name, rhs) =>
+        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
+        else {
+          mapping = mapping + (name -> Seq(rhs))
+        }
+      case e => default = default :+ e
     }
     (default, mapping)
   }

@@ -72,7 +72,7 @@ object TemporalLogicEmbedding extends Embedding {
     private final val DOMAIN_DECREASING = 3
     private final val DOMAIN = state.createKey[String, Int]()
 
-    private final val MODALS = state.createKey[THF.Formula, Seq[String]]()
+    private final val MODALS = state.createKey[THF.Formula, Seq[THF.Formula]]()
     ////////////////////////////////////////////////////////////////////
     // Embedding options
     private val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
@@ -304,37 +304,33 @@ object TemporalLogicEmbedding extends Embedding {
         case THF.~| => inlineMnorDef
         case THF.~& => inlineMnandDef
         /// Non-classical connectives BEGIN
-        // Box operator
-        case THF.NonclassicalBox(index) => index match {
-          case Some(index0) => mboxIndexed(index0)
-          case None => str2Fun("mbox")
-        }
-        // Diamond operator
-        case THF.NonclassicalDiamond(index) => index match {
-          case Some(index0) => mdiaIndexed(index0)
-          case None => str2Fun("mdia")
-        }
+        // temporal operators
         case THF.NonclassicalLongOperator(name, parameters) =>
           name match {
-            case "$box" | "$necessary" | "$obligatory" | "$knows" => parameters match {
-              case Seq() => str2Fun("mbox")
-              case Seq(Left(index0)) => mboxIndexed(index0)
-              case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
+            case "$always" => parameters match {
+              case Seq() => str2Fun("mbox_future")
+              case _ => throw new EmbeddingException(s"No index is allowed in G operator, but parameters '${parameters.toString()}' was given.")
             }
-            case "$dia" | "$possible" | "$permissible" => parameters match {
-              case Seq() => str2Fun("mdia")
-              case Seq(Left(index0)) => mdiaIndexed(index0)
-              case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
+            case "$future" => parameters match {
+              case Seq() => str2Fun("mdia_future")
+              case _ => throw new EmbeddingException(s"No index is allowed in F operator, but parameters '${parameters.toString()}' was given.")
+            }
+            case "$hitherto" => parameters match {
+              case Seq() => str2Fun("mbox_past")
+              case _ => throw new EmbeddingException(s"No index is allowed in H operator, but parameters '${parameters.toString()}' was given.")
+            }
+            case "$past" => parameters match {
+              case Seq() => str2Fun("mdia_past")
+              case _ => throw new EmbeddingException(s"No index is allowed in P operator, but parameters '${parameters.toString()}' was given.")
             }
             case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
           }
-
         /// Non-classical connectives END
         // Error cases
         case THF.App | THF.Eq | THF.Neq => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
         case THF.:= => throw new EmbeddingException(s"Unexpected assignment operator used as connective.")
         case THF.== => throw new EmbeddingException(s"Unexpected meta-logical identity operator used as connective.")
-        case _ => throw new EmbeddingException(s"Unexpected type constructor used as connective: '${connective.pretty}'")
+        case _ => throw new EmbeddingException(s"Unexpected operator or type constructor used as connective: '${connective.pretty}'")
       }
     }
 
@@ -368,15 +364,6 @@ object TemporalLogicEmbedding extends Embedding {
       THF.FunctionTerm(name, Seq.empty)
     }
 
-    @inline private[this] def mbox: THF.Formula = str2Fun("mbox")
-    private[this] def mboxIndexed(index: THF.Formula): THF.Formula = {
-      THF.BinaryFormula(THF.App, mbox, multiModal(index))
-    }
-    @inline private[this] def mdia: THF.Formula = str2Fun("mdia")
-    private[this] def mdiaIndexed(index: THF.Formula): THF.Formula = {
-      THF.BinaryFormula(THF.App, mdia, multiModal(index))
-    }
-
     @inline private[this] def mglobal: THF.Formula = str2Fun("mglobal")
     @inline private[this] def mlocal: THF.Formula =  str2Fun("mlocal")
 
@@ -384,7 +371,6 @@ object TemporalLogicEmbedding extends Embedding {
       formula match {
         case TPTP.THFAnnotated(name, role, TPTP.THF.Typing(symbol, typ), annotations) =>
           val convertedTyping = TPTP.THF.Typing(symbol, convertType(typ))
-          //          typedSymbolsInOriginalProblem += (symbol -> typ)
           TPTP.THFAnnotated(name, role, convertedTyping, annotations)
         case TPTP.THFAnnotated(_, _, _, _) => throw new EmbeddingException(s"Malformed type definition in formula '${formula.name}', aborting.")
         case _ => throw new EmbeddingException(s"Only embedding of THF files supported.")
@@ -422,18 +408,12 @@ object TemporalLogicEmbedding extends Embedding {
     private[this] var localFormulaExists = false
     private[this] var globalFormulaExists = false
 
-    private[this] val modalOperators: mutable.Set[THF.FunctionTerm] = mutable.Set.empty
-    private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
-    private[this] def multiModal(index: THF.Formula): THF.FunctionTerm = {
-      val index0 = escapeModalIndex(index)
-      modalOperators += index0
-      index0
-    }
-    private[this] def escapeModalIndex(index: THF.Formula): THF.FunctionTerm = index match {
-      case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"#$name", args)
-      case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"#$value", Seq.empty)
-      case _ => throw new EmbeddingException(s"Unsupported index '${index.pretty}'")
-    }
+
+//    private[this] def escapeModalIndex(index: THF.Formula): THF.FunctionTerm = index match {
+//      case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"#$name", args)
+//      case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"#$value", Seq.empty)
+//      case _ => throw new EmbeddingException(s"Unsupported index '${index.pretty}'")
+//    }
 
     private[this] val quantifierTypes: mutable.Set[THF.Type] = mutable.Set.empty
     private[this] def quantifierType(typ: THF.Type): Unit = {
@@ -447,21 +427,9 @@ object TemporalLogicEmbedding extends Embedding {
       /////////////////////////////////////////////////////////////
       // First: Introduce world type
       result.append(worldTypeTPTPDef())
-      // Then: Introduce index type (if multi-modal)
-      if (isMultiModal) {
-        result.append(indexTypeTPTPDef())
-      }
       /////////////////////////////////////////////////////////////
       // Then: Introduce mrel (as relation or as collection of relations)
-      if (isMultiModal) result.append(indexedAccessibilityRelationTPTPDef())
-      else result.append(simpleAccessibilityRelationTPTPDef())
-      /////////////////////////////////////////////////////////////
-      // Then: Introduce index values (if multimodal)
-      if (isMultiModal) {
-        modalOperators.foreach { index =>
-          result.append(indexTPTPDef(index))
-        }
-      }
+      result.append(simpleAccessibilityRelationTPTPDef())
       /////////////////////////////////////////////////////////////
       // Then: Define mglobal/mlocal
       if (localFormulaExists) {
@@ -477,35 +445,19 @@ object TemporalLogicEmbedding extends Embedding {
       result.appendAll(connectivesTPTPDef())
       /////////////////////////////////////////////////////////////
       // Then: Define modal operators
-      if (isMultiModal) result.appendAll(indexedModalOperatorsTPTPDef())
-      else result.appendAll(simpleModalOperatorsTPTPDef())
+      result.appendAll(simpleModalOperatorsTPTPDef())
       /////////////////////////////////////////////////////////////
       // Then: Give mrel properties (sem/syn)
       // write used properties and assign (if semantical)
       // or write syntactical axioms (if syntactical)
-      if (isMultiModal) {
-        val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) indexedSemanticAxiomTable else indexedSyntacticAxiomTable
-        modalOperators foreach { index =>
-          val modalSystem = state(MODALS).apply(index)
-          val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
-          axiomNames foreach { ax =>
-            val axiom = axiomTable.apply(ax)
-            axiom.foreach { f =>
-              val res = f(index)
-              result.append(res)
-            }
-          }
-        }
-      } else {
-        val modalSystem = state.getDefault(MODALS)
-        modalSystem match {
-          case Some(value) =>
-            val axiomNames = if (isModalSystemName(value.head)) modalSystemTable(value.head) else value
-            val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) semanticAxiomTable else syntacticAxiomTable
-            val modalAxioms = axiomNames.flatMap(axiomTable).toSet
-            result.appendAll(modalAxioms)
-          case None => throw new EmbeddingException(s"No semantics for modal operators specified, embedding not possible.")
-        }
+      val modalSystem = state.getDefault(MODALS)
+      modalSystem match {
+        case Some(value) =>
+          val axiomNames = value
+          val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) semanticAxiomTable else syntacticAxiomTable
+          val modalAxioms = axiomNames.flatMap(axiomTable).toSet
+          result.appendAll(modalAxioms)
+        case None => throw new EmbeddingException(s"No semantics for modal operators specified, embedding not possible.")
       }
       /////////////////////////////////////////////////////////////
       // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary and semantic embedding)
@@ -577,21 +529,10 @@ object TemporalLogicEmbedding extends Embedding {
     }
 
     @inline private[this] def worldTypeName: String = "mworld"
-    @inline private[this] def indexTypeName: String = "mindex"
 
     private[this] def worldTypeTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
       annotatedTHF(s"thf($worldTypeName, type, $worldTypeName: $$tType).")
-    }
-    private[this] def indexTypeTPTPDef(): TPTP.AnnotatedFormula = {
-      import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF(s"thf($indexTypeName, type, $indexTypeName: $$tType).")
-    }
-
-    private[this] def indexTPTPDef(index: THF.FunctionTerm): TPTP.AnnotatedFormula = {
-      import modules.input.TPTPParser.annotatedTHF
-      val name = s"${unescapeTPTPName(index.pretty)}_type"
-      annotatedTHF(s"thf(${escapeName(name)}, type, ${index.pretty}: $indexTypeName).")
     }
 
     private[this] def unescapeTPTPName(name: String): String = {
@@ -612,11 +553,6 @@ object TemporalLogicEmbedding extends Embedding {
     private[this] def simpleAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
       annotatedTHF(s"thf(mrel_type, type, mrel: $worldTypeName > $worldTypeName > $$o).")
-    }
-
-    private[this] def indexedAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
-      import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF(s"thf(mrel_type, type, mrel: $indexTypeName > $worldTypeName > $worldTypeName > $$o).")
     }
 
     private[this] def mglobalTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
@@ -655,22 +591,17 @@ object TemporalLogicEmbedding extends Embedding {
     private[this] def simpleModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mbox_type, type, mbox: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
-        annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ![V:$worldTypeName]: ( (mrel @ W @ V) => (Phi @ V) ))))."),
-        annotatedTHF(s"thf(mdia_type, type, mdia: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
-        annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ W @ V) & (Phi @ V) )))).")
+        annotatedTHF(s"thf(mbox_future_type, type, mbox_future: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mbox_future_def, definition, ( mbox_future = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ![V:$worldTypeName]: ( (mrel @ W @ V) => (Phi @ V) ))))."),
+        annotatedTHF(s"thf(mdia_future_type, type, mdia_future: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mdia_future_def, definition, ( mdia_future = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ W @ V) & (Phi @ V) ))))."),
+        annotatedTHF(s"thf(mbox_past_type, type, mbox_past: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mbox_past_def, definition, ( mbox_past = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ![V:$worldTypeName]: ( (mrel @ V @ W) => (Phi @ V) ))))."),
+        annotatedTHF(s"thf(mdia_past_type, type, mdia_past: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mdia_past_def, definition, ( mdia_past = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ V @ W) & (Phi @ V) )))).")
       )
     }
 
-    private[this] def indexedModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Seq(
-        annotatedTHF(s"thf(mbox_type, type, mbox: $indexTypeName > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
-        annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [R:$indexTypeName, Phi:$worldTypeName>$$o,W:$worldTypeName]: ! [V:$worldTypeName]: ( (mrel @ R @ W @ V) => (Phi @ V) ))))."),
-        annotatedTHF(s"thf(mdia_type, type, mdia: $indexTypeName > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
-        annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [R:$indexTypeName, Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ R @ W @ V) & (Phi @ V) )))).")
-      )
-    }
 
     private[this] def indexedConstQuantifierTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
@@ -720,37 +651,23 @@ object TemporalLogicEmbedding extends Embedding {
     }
     private[this] def indexedCumulativeExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
-      if (isMultiModal) Seq(annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![Index:$indexTypeName, W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ Index @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V)))."))
-      else Seq(annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V)))."))
+      Seq(annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ W @ V)) => (eiw_${serializeType(typ)} @ X @ V)))."))
     }
     private[this] def indexedDecreasingExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
-      if (isMultiModal) Seq(annotatedTHF(s"thf(eiw_${serializeType(typ)}_decr, axiom, ![Index: $indexTypeName, W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ Index @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V)))."))
-      else Seq(annotatedTHF(s"thf(eiw_${serializeType(typ)}_decr, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V)))."))
+      Seq(annotatedTHF(s"thf(eiw_${serializeType(typ)}_decr, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw_${serializeType(typ)} @ X @ W) & (mrel @ V @ W)) => (eiw_${serializeType(typ)} @ X @ V)))."))
     }
 
     private[this] def indexedConverseBarcanFormulaTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.{annotatedTHF, thf}
-      if (isMultiModal) {
-        val box = "[#I]"
-        val formula = convertFormula(thf(s"($box @ (![X:${typ.pretty}]: (P @ X))) => (![X:${typ.pretty}]: ($box @ (P @ X)))")).pretty
-        Seq(annotatedTHF(s"thf(cbf_${serializeType(typ)}, axiom, ![I: $indexTypeName, P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula)))."))
-      } else {
-        val formula = convertFormula(thf(s"($$box @ (![X:${typ.pretty}]: (P @ X))) => (![X:${typ.pretty}]: ($$box @ (P @ X)))")).pretty
-        Seq(annotatedTHF(s"thf(cbf_${serializeType(typ)}, axiom, ![P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula)))."))
-      }
+      val formula = convertFormula(thf(s"($$box @ (![X:${typ.pretty}]: (P @ X))) => (![X:${typ.pretty}]: ($$box @ (P @ X)))")).pretty
+      Seq(annotatedTHF(s"thf(cbf_${serializeType(typ)}, axiom, ![P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula)))."))
     }
 
     private[this] def indexedBarcanFormulaTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.{annotatedTHF, thf}
-      if (isMultiModal) {
-        val box = "[#I]"
-        val formula = convertFormula(thf(s"(![X:${typ.pretty}]: ($box @ (P @ X))) => ($box @ (![X:${typ.pretty}]: (P @ X)))")).pretty
-        Seq(annotatedTHF(s"thf(bf_${serializeType(typ)}, axiom, ![I: $indexTypeName, P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula)))."))
-      } else {
-        val formula = convertFormula(thf(s"(![X:${typ.pretty}]: ($$box @ (P @ X))) => ($$box @ (![X:${typ.pretty}]: (P @ X)))")).pretty
-        Seq(annotatedTHF(s"thf(bf_${serializeType(typ)}, axiom, ![P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula)))."))
-      }
+      val formula = convertFormula(thf(s"(![X:${typ.pretty}]: ($$box @ (P @ X))) => ($$box @ (![X:${typ.pretty}]: (P @ X)))")).pretty
+      Seq(annotatedTHF(s"thf(bf_${serializeType(typ)}, axiom, ![P:${typ.pretty} > ($worldTypeName>$$o)]: (mglobal @ ($formula)))."))
     }
 
     private[this] def polyIndexedExistsInWorldTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
@@ -762,319 +679,95 @@ object TemporalLogicEmbedding extends Embedding {
     }
     private[this] def polyIndexedCumulativeExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
-      if (isMultiModal) {
-        Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![T:$$tType, R:T, W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ T @ R @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
-        )
-      } else {
-        Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
-        )
-      }
+      Seq(
+        annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ W @ V)) => (eiw @ ${typ.pretty} @ X @ V))).")
+      )
     }
     private[this] def polyIndexedDecreasingExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
-      if (isMultiModal) {
-        Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![T:$$tType, R:T, W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ T @ R @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
-        )
-      } else {
-        Seq(
-          annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
-        )
-      }
+      Seq(
+        annotatedTHF(s"thf(eiw_${serializeType(typ)}_cumul, axiom, ![W:$worldTypeName, V:$worldTypeName, X:${typ.pretty}]: (((eiw @ ${typ.pretty} @ X @ W) & (mrel @ V @ W)) => (eiw @ ${typ.pretty} @ X @ V))).")
+      )
     }
 
-    lazy val semanticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
+    lazy val semanticAxiomTable: Map[TPTP.THF.Formula, Option[TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.annotatedTHF
       Map(
-        "$modal_axiom_K" -> None,
-        "$modal_axiom_T" -> Some(annotatedTHF(
+        TPTP.THF.FunctionTerm("$reflexivity", Seq.empty) -> Some(annotatedTHF(
           s"thf(mrel_reflexive, axiom, ![W:$worldTypeName]: (mrel @ W @ W))."
         )),
-        "$modal_axiom_B" -> Some(annotatedTHF(
-          s"thf(mrel_symmetric, axiom, ![W:$worldTypeName, V:$worldTypeName]: ((mrel @ W @ V) => (mrel @ V @ W)))."
+        TPTP.THF.FunctionTerm("$irreflexivity", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_irreflexive, axiom, ![W:$worldTypeName]: (~(mrel @ W @ W)))."
         )),
-        "$modal_axiom_D" -> Some(annotatedTHF(
-          s"thf(mrel_serial, axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (mrel @ W @ V))."
-        )),
-        "$modal_axiom_4" -> Some(annotatedTHF(
+        TPTP.THF.FunctionTerm("$transitivity", Seq.empty) -> Some(annotatedTHF(
           s"thf(mrel_transitive, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ W @ V) & (mrel @ V @ U)) => (mrel @ W @ U)))."
         )),
-        "$modal_axiom_5" -> Some(annotatedTHF(
-          s"thf(mrel_euclidean, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ W @ U) & (mrel @ W @ V)) => (mrel @ U @ V)))."
+        TPTP.THF.FunctionTerm("$asymmetry", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_asymmetry, axiom, ![W:$worldTypeName,V:$worldTypeName]: (~((mrel @ W @ V) & (mrel @ V @ W))))."
         )),
-        "$modal_axiom_C4" -> Some(annotatedTHF(
-          s"thf(mrel_dense, axiom, ![W:$worldTypeName,U:$worldTypeName]: ((mrel @ W @ U) => (? [V:$worldTypeName]: ((mrel @ W @ V) & (mrel @ V @ U)))))."
+        TPTP.THF.FunctionTerm("$anti_symmetry", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_antisymmetry, axiom, ![W:$worldTypeName,V:$worldTypeName]: (((mrel @ W @ V) & (mrel @ V @ W)) => (V = W)))."
         )),
-        "$modal_axiom_CD" -> Some(annotatedTHF(
-          s"thf(mrel_functional, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ W @ U) & (mrel @ W @ V)) => (U = V)))."
+        TPTP.THF.FunctionTerm("$linearity", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_linearity, axiom, ![W:$worldTypeName,V:$worldTypeName]: ((W = V) | (mrel @ W @ V) | (mrel @ V @ W)))."
         )),
-        "$modal_axiom_S5U" -> Some(annotatedTHF(
-          s"thf(mrel_universal, axiom, ![W:$worldTypeName,V:$worldTypeName]: (mrel @ W @ V))."
+        TPTP.THF.FunctionTerm("$forward_linearity", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_forward_linearity, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ U @ W) & (mrel @ U @ V)) => ((W = V) | (mrel @ W @ V) | (mrel @ V @ W))))."
+        )),
+        TPTP.THF.FunctionTerm("$backward_linearity", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_backward_linearity, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ W @ U) & (mrel @ V @ U)) => ((W = V) | (mrel @ W @ V) | (mrel @ V @ W))))."
+        )),
+        TPTP.THF.FunctionTerm("$beginning", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_serial_past, axiom, ![W:$worldTypeName]: (~ (?[V:$worldTypeName]: (mrel @ V @ W))))."
+        )),
+        TPTP.THF.FunctionTerm("$end", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_serial_future, axiom, ![W:$worldTypeName]: (~ (?[V:$worldTypeName]: (mrel @ W @ V))))."
+        )),
+        TPTP.THF.FunctionTerm("$no_beginning", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_serial_past, axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (mrel @ V @ W))."
+        )),
+        TPTP.THF.FunctionTerm("$no_end", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_serial_future, axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (mrel @ W @ V))."
+        )),
+        TPTP.THF.FunctionTerm("$density", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_density, axiom, ![W:$worldTypeName,V:$worldTypeName]: ((mrel @ W @ V) => (?[U:$worldTypeName]: ((mrel @ W @ U) & (mrel @ U @ V))) ))."
+        )),
+        TPTP.THF.FunctionTerm("$forward_discreteness", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_forward_discreteness, axiom, ![W:$worldTypeName,V:$worldTypeName]: ((mrel @ W @ V) => (?[U:$worldTypeName]: ((mrel @ W @ U) & (mrel @ U @ V) & ~(?[Z:$worldTypeName]: ((mrel @ W @ Z) & (mrel @ Z @ U)))))) )."
+        )),
+        TPTP.THF.FunctionTerm("$backward_discreteness", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_backward_discreteness, axiom, ![W:$worldTypeName,V:$worldTypeName]: ((mrel @ V @ W) => (?[U:$worldTypeName]: ((mrel @ U @ W) & (mrel @ V @ U) & ~(?[Z:$worldTypeName]: ((mrel @ Z @ W) & (mrel @ U @ Z)))))) )."
+        )),
+        TPTP.THF.FunctionTerm("$modal_axiom_K", Seq.empty) -> None,
+        TPTP.THF.FunctionTerm("$modal_axiom_T", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_reflexive_t, axiom, ![W:$worldTypeName]: (mrel @ W @ W))."
+        )),
+        TPTP.THF.FunctionTerm("$modal_axiom_B", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_symmetric_b, axiom, ![W:$worldTypeName, V:$worldTypeName]: ((mrel @ W @ V) => (mrel @ V @ W)))."
+        )),
+        TPTP.THF.FunctionTerm("$modal_axiom_D", Seq(TPTP.THF.FunctionTerm("future", Seq.empty))) ->
+          Some(annotatedTHF(
+            s"thf(mrel_serial_future_d, axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (mrel @ W @ V))."
+          )),
+        TPTP.THF.FunctionTerm("$modal_axiom_D", Seq(TPTP.THF.FunctionTerm("past", Seq.empty))) ->
+          Some(annotatedTHF(
+            s"thf(mrel_serial_past_d, axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (mrel @ V @ W))."
+          )),
+        TPTP.THF.FunctionTerm("$modal_axiom_4", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_transitive_4, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ W @ V) & (mrel @ V @ U)) => (mrel @ W @ U)))."
+        )),
+        TPTP.THF.FunctionTerm("$modal_axiom_5", Seq.empty) -> Some(annotatedTHF(
+          s"thf(mrel_euclidean_5, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ W @ U) & (mrel @ W @ V)) => (mrel @ U @ V)))."
         ))
-        // TODO: More axiom schemes
       )
     }
-    lazy val syntacticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
+    lazy val syntacticAxiomTable: Map[TPTP.THF.Formula, Option[TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.{annotatedTHF, thf}
 
       Map(
-        "$modal_axiom_K" -> None,
-        "$modal_axiom_T" -> {
-          val formula = convertFormula(thf("($box @ Phi) => Phi")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_reflexive, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_B" -> {
-          val formula = convertFormula(thf("Phi => ($box @ ($dia @ Phi))")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_symmetric, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_D" -> {
-          val formula = convertFormula(thf("($box @ Phi) => ($dia @ Phi)")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_serial, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_4" -> {
-          val formula = convertFormula(thf("($box @ Phi) => ($box @ ($box @ Phi))")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_transitive, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_5" -> {
-          val formula = convertFormula(thf("($dia @ Phi) => ($box @ ($dia @ Phi))")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_euclidean, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_C4" -> {
-          val formula = convertFormula(thf("($box @ ($box @ Phi)) => ($box @ Phi)")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_dense, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_CD" -> {
-          val formula = convertFormula(thf("($dia @ Phi) => ($box @ Phi)")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_functional, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_GL" -> {
-          val formula = convertFormula(thf("($box @ (($box @ Phi) => Phi)) => ($box @ Phi)")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_gl, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_GRZ" -> {
-          val formula = convertFormula(thf("($box @ (($box @ (Phi => ($box @ Phi))) => Phi)) => Phi")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_grz, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_H" -> {
-          val formula = convertFormula(thf("($box @ (($box @ Phi) => Psi)) | ($box @ (($box @ Psi) => Phi))")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_h, axiom, ![Phi:$worldTypeName>$$o, Psi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_M" -> {
-          val formula = convertFormula(thf("($box @ ($dia @ Phi)) => ($dia @ ($box @ Phi))")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_m, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        },
-        "$modal_axiom_G" -> {
-          val formula = convertFormula(thf("($dia @ ($box @ Phi)) => ($box @ ($dia @ Phi))")).pretty
-          Some(annotatedTHF(
-            s"thf(mrel_g, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-          ))
-        }
+        TPTP.THF.FunctionTerm("$modal_axiom_K", Seq.empty) -> None // TODO
       )
     }
-
-    lazy val indexedSyntacticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
-      import modules.input.TPTPParser.{annotatedTHF, thf}
-      Map(
-        "$modal_axiom_K" -> None,
-        "$modal_axiom_T" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val formula = convertFormula(thf(s"($box @ Phi) => Phi")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_reflexive', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_B" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val dia = s"<#${idx.pretty}>"
-            val formula = convertFormula(thf(s"Phi => ($box @ ($dia @ Phi))")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_symmetric', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_D" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val dia = s"<#${idx.pretty}>"
-            val formula = convertFormula(thf(s"($box @ Phi) => ($dia @ Phi)")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_serial', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_4" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val formula = convertFormula(thf(s"($box @ Phi) => ($box @ ($box @ Phi))")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_transitive', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_5" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val dia = s"<#${idx.pretty}>"
-            val formula = convertFormula(thf(s"($dia @ Phi) => ($box @ ($dia @ Phi))")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_euclidean', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_C4" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val formula = convertFormula(thf(s"($box @ ($box @ Phi)) => ($box @ Phi)")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_dense', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_CD" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val dia = s"<#${idx.pretty}>"
-            val formula = convertFormula(thf(s"($dia @ Phi) => ($box @ Phi)")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_functional', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_GL" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val formula = convertFormula(thf(s"($box @ (($box @ Phi) => Phi)) => ($box @ Phi)")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_gl', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_GRZ" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val formula = convertFormula(thf(s"($box @ (($box @ (Phi => ($box @ Phi))) => Phi)) => Phi")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_grz', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_H" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val formula = convertFormula(thf(s"($box @ (($box @ Phi) => Psi)) | ($box @ (($box @ Psi) => Phi))")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_h', axiom, ![Phi:$worldTypeName>$$o, Psi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_M" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val dia = s"<#${idx.pretty}>"
-            val formula = convertFormula(thf(s"($box @ ($dia @ Phi)) => ($dia @ ($box @ Phi))")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_m', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        },
-        "$modal_axiom_G" -> {
-          Some(idx => {
-            val box = s"[#${idx.pretty}]"
-            val dia = s"<#${idx.pretty}>"
-            val formula = convertFormula(thf(s"($dia @ ($box @ Phi)) => ($box @ ($dia @ Phi))")).pretty
-            annotatedTHF(
-              s"thf('mrel_${unescapeTPTPName(idx.pretty)}_g', axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
-            )
-          })
-        }
-      )
-    }
-
-    lazy val indexedSemanticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Map(
-        "$modal_axiom_K" -> None,
-        "$modal_axiom_T" -> Some(idx => annotatedTHF(
-          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_reflexive', axiom, ![W:$worldTypeName]: (mrel @ ${idx.pretty} @ W @ W))."
-        )),
-        "$modal_axiom_B" -> Some(idx => annotatedTHF(
-          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_symmetric', axiom, ![W:$worldTypeName, V:$worldTypeName]: ((mrel @ ${idx.pretty} @ W @ V) => (mrel @ ${idx.pretty} @ V @ W)))."
-        )),
-        "$modal_axiom_D" -> Some(idx => annotatedTHF(
-          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_serial', axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (mrel @ ${idx.pretty} @ W @ V))."
-        )),
-        "$modal_axiom_4" -> Some(idx => annotatedTHF(
-          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_transitive', axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ ${idx.pretty} @ W @ V) & (mrel @ ${idx.pretty} @ V @ U)) => (mrel @ ${idx.pretty} @ W @ U)))."
-        )),
-        "$modal_axiom_5" -> Some(idx => annotatedTHF(
-          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_euclidean', axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ ${idx.pretty} @ W @ U) & (mrel @ ${idx.pretty} @ W @ V)) => (mrel @ ${idx.pretty} @ U @ V)))."
-        )),
-        "$modal_axiom_C4" -> Some(idx => annotatedTHF(
-          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_dense', axiom, ![W:$worldTypeName,U:$worldTypeName]: ((mrel @ ${idx.pretty} @ W @ U) => (? [V:$worldTypeName]: ((mrel @ ${idx.pretty} @ W @ V) & (mrel @ ${idx.pretty} @ V @ U)))))."
-        )),
-        "$modal_axiom_CD" -> Some(idx => annotatedTHF(
-          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_functional', axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((mrel @ ${idx.pretty} @ W @ U) & (mrel @ ${idx.pretty} @ W @ V)) => (U = V)))."
-        )),
-        "$modal_axiom_S5U" -> Some(idx => annotatedTHF(
-          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_universal', axiom, ![W:$worldTypeName,V:$worldTypeName]: (mrel @ ${idx.pretty} @ W @ V))."
-        ))
-        // TODO: More axiom schemes
-      )
-    }
-
-    private def isModalAxiomName(name: String): Boolean = name.startsWith("$modal_axiom_")
-    private def isModalSystemName(name: String): Boolean = name.startsWith("$modal_system_")
-    lazy val modalSystemTable: Map[String, Seq[String]] = Map(
-      "$modal_system_K" -> Seq("$modal_axiom_K"),
-      "$modal_system_K4" -> Seq("$modal_axiom_K", "$modal_axiom_4"),
-      "$modal_system_K5" -> Seq("$modal_axiom_K", "$modal_axiom_5"),
-      "$modal_system_KB" -> Seq("$modal_axiom_K", "$modal_axiom_B"),
-      "$modal_system_K45" -> Seq("$modal_axiom_K", "$modal_axiom_4", "$modal_axiom_5"),
-      "$modal_system_KB5" -> Seq("$modal_axiom_K", "$modal_axiom_B", "$modal_axiom_5"),
-      "$modal_system_D" -> Seq("$modal_axiom_K", "$modal_axiom_D"),
-      "$modal_system_D4" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_4"),
-      "$modal_system_D5" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_5"),
-      "$modal_system_D45" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_4", "$modal_axiom_5"),
-      "$modal_system_DB" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_B"),
-      "$modal_system_T" -> Seq("$modal_axiom_K", "$modal_axiom_T"),
-      "$modal_system_B" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_B"),
-      "$modal_system_S4" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4"),
-      "$modal_system_S5" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_5"),
-      "$modal_system_S5U" -> Seq("$modal_axiom_S5U"),
-      "$modal_system_K4W" -> Seq("$modal_axiom_K", "$modal_axiom_GL"),
-      "$modal_system_4_1" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_H"),
-      "$modal_system_4_2" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_M"),
-      "$modal_system_4_3" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4" ,"$modal_axiom_G"),
-      "$modal_system_Grz" -> Seq("$modal_axiom_K", "$modal_axiom_Grz"),
-      "$modal_system_GL" -> Seq("$modal_axiom_K", "$modal_axiom_GL")
-    )
 
     //////////////////////////////////////////////////////////////////////
     // Logic specification parsing
@@ -1123,26 +816,10 @@ object TemporalLogicEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$modalities" => val (default, map) = parseListRHS(rhs)
-                  if (default.nonEmpty) {
-                    if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec)))
+                case "$modalities" => val (default, map) = parseListRHSNew(rhs)
+                  if (default.nonEmpty && map.isEmpty) {
                       state.setDefault(MODALS, default)
-                    else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[",",", "]")}")
-                  }
-                  map foreach { case (lhs, modalspec) =>
-                    val index0 = lhs match {
-                      case THF.ConnectiveTerm(THF.NonclassicalBox(Some(index))) => index
-                      case THF.ConnectiveTerm(THF.NonclassicalLongOperator(cname, Seq(Left(index))))
-                        if Seq("$box", "$necessary" , "$obligatory" , "$knows").contains(cname) => index
-                      case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
-                    }
-                    val index = escapeModalIndex(index0)
-                    if (modalspec.nonEmpty) {
-                      if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec)))
-                        state(MODALS) += (index -> modalspec)
-                      else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[",",", "]")}")
-                    }
-                  }
+                  } else throw new EmbeddingException(s"Unspecified modality or ill-specified modality..")
                 case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
               }
             case s => throw new EmbeddingException(s"Malformed logic specification entry: ${s.pretty}")
