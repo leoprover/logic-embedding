@@ -20,7 +20,7 @@ object TemporalLogicEmbedding extends Embedding {
   override type OptionType = TemporalLogicEmbeddingOption.type
   override final def embeddingParameter: TemporalLogicEmbeddingOption.type = TemporalLogicEmbeddingOption
 
-  override final val name: String = "temporal"
+  override final val name: String = "temporal_instant"
   override final def version: String = "1.0"
 
   private[this] final val defaultConstantSpec = "$rigid"
@@ -30,7 +30,7 @@ object TemporalLogicEmbedding extends Embedding {
     import modules.input.TPTPParser.annotatedTHF
     val spec: mutable.StringBuilder = new mutable.StringBuilder
     spec.append("thf(logic_spec, logic, (")
-    spec.append("$temporal == [")
+    spec.append("$temporal_instant == [")
     spec.append("$constants == "); spec.append(specs.getOrElse("$constants", defaultConstantSpec)); spec.append(",")
     spec.append("$quantification == "); spec.append(specs.getOrElse("$quantification", defaultQuantificationSpec)); spec.append(",")
     spec.append("time == "); spec.append(specs.getOrElse("$modalities", defaultModalitiesSpec))
@@ -776,7 +776,7 @@ object TemporalLogicEmbedding extends Embedding {
     private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
       assert(spec.role == "logic")
       spec.formula match {
-        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm("$temporal", Seq()),THF.Tuple(spec0))) =>
+        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm("$temporal_instant", Seq()),THF.Tuple(spec0))) =>
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {

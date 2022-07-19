@@ -25,7 +25,7 @@ lazy val runtime = (project in file("embedding-runtime"))
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.3",
+    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.4",
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.12" % "test"
 	)
 
@@ -38,6 +38,6 @@ lazy val app = (project in file("embedding-app"))
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.3",
+    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.4",
 	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.12" % "test"
 	).dependsOn(runtime)
