@@ -22,7 +22,7 @@ object DyadicDeonticLogicEmbedding extends Embedding {
   override final type OptionType = DyadicDeonticLogicEmbeddingParameter.type
 
   override final val name: String = "$$ddl"
-  override final val version: String = "1.0"
+  override final val version: String = "1.1"
   override final def embeddingParameter: DyadicDeonticLogicEmbeddingParameter.type = DyadicDeonticLogicEmbeddingParameter
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  {
@@ -362,13 +362,21 @@ object DyadicDeonticLogicEmbedding extends Embedding {
         annotatedTHF(s"thf(${not}_type, type , ( $not: ($worldType>$$o)>$worldType>$$o) )."),
         annotatedTHF(s"thf(${and}_type, type , ( $and: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o) )."),
         annotatedTHF(s"thf(${or}_type, type , ( $or: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o) )."),
+        annotatedTHF(s"thf(${nand}_type, type , ( $nand: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o) )."),
+        annotatedTHF(s"thf(${nor}_type, type , ( $nor: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o) )."),
         annotatedTHF(s"thf(${impl}_type, type , ( $impl: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o) )."),
+        annotatedTHF(s"thf(${i_f}_type, type , ( $i_f: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o) )."),
         annotatedTHF(s"thf(${equiv}_type, type , ( $equiv: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o) )."),
+        annotatedTHF(s"thf(${niff}_type, type , ( $niff: ($worldType>$$o)>($worldType>$$o)>$worldType>$$o) )."),
         annotatedTHF(s"thf(${not}_def, definition , ( $not = (^ [A:$worldType>$$o,W:$worldType] : ~(A@W))))."),
         annotatedTHF(s"thf(${and}_def, definition , ( $and = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) & (B@W) ))))."),
         annotatedTHF(s"thf(${or}_def, definition , ( $or = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) | (B@W) ))))."),
+        annotatedTHF(s"thf(${nand}_def, definition , ( $nand = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) ~& (B@W) ))))."),
+        annotatedTHF(s"thf(${nor}_def, definition , ( $nor = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) ~| (B@W) ))))."),
         annotatedTHF(s"thf(${impl}_def, definition , ( $impl = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) => (B@W) ))))."),
-        annotatedTHF(s"thf(${equiv}_def, definition , ( $equiv = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) <=> (B@W) )))).")
+        annotatedTHF(s"thf(${i_f}_def, definition , ( $i_f = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) <= (B@W) ))))."),
+        annotatedTHF(s"thf(${equiv}_def, definition , ( $equiv = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) <=> (B@W) ))))."),
+        annotatedTHF(s"thf(${niff}_def, definition , ( $niff = (^ [A:$worldType>$$o,B:$worldType>$$o,W:$worldType] : ( (A@W) <~> (B@W) )))).")
       )
     }
     private[this] def aqvistDDLOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
