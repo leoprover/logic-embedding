@@ -13,7 +13,7 @@ object NormativeDSLEmbedding extends Embedding {
   override final type OptionType = NormativeDSLEmbeddingParameter.type
 
   override final val name: String = "$$normative"
-  override final val version: String = "1.0"
+  override final val version: String = "1.1"
   override final def embeddingParameter: NormativeDSLEmbeddingParameter.type = NormativeDSLEmbeddingParameter
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  {
