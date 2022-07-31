@@ -21,7 +21,9 @@ lazy val runtime = (project in file("embedding-runtime"))
 	.settings(
 	  commonSettings,
     name := "logic-embedding-runtime",
-    assembly/assemblyOption := (assembly/assemblyOption).value.copy(includeScala = false),
+    assembly / assemblyOption ~= {
+      _.withIncludeScala(false)
+    },
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
