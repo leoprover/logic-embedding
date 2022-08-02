@@ -21,7 +21,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.5.4"
+  override final def version: String = "1.5.5"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -325,6 +325,15 @@ object ModalEmbedding extends Embedding {
               case Seq() => str2Fun("mdia")
               case Seq(Left(index0)) => mdiaIndexed(index0)
               case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
+            }
+            case "$forbidden" => parameters match {
+              case Seq() =>
+                val box = str2Fun("mbox")
+                modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
+              case Seq(Left(index0)) =>
+                val box = mboxIndexed(index0)
+                modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
+              case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
             }
             case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
           }
