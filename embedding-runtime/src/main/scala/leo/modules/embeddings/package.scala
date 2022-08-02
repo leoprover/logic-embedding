@@ -10,7 +10,6 @@ import java.util.logging.Logger
 package object embeddings {
   final class EmbeddingException(message: String) extends RuntimeException(message)
   final class MalformedLogicSpecificationException(val spec: TPTP.AnnotatedFormula) extends RuntimeException
-  final class UnspecifiedLogicException extends RuntimeException
 
   final val tptpDefinedNullaryPredicateSymbols: Seq[String] = Seq("$true", "$false")
 

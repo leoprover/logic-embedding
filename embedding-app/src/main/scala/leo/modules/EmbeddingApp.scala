@@ -2,12 +2,13 @@ package leo.modules
 
 import leo.datastructures.TPTP
 import leo.datastructures.TPTP.{AnnotatedFormula, Problem}
-import leo.modules.embeddings.{Library, EmbeddingException, Embedding, getLogicSpecFromProblem, getLogicFromSpec}
-import leo.modules.embeddings.{UnspecifiedLogicException, MalformedLogicSpecificationException}
+import leo.modules.embeddings.{Embedding, EmbeddingException, Library, getLogicFromSpec, getLogicSpecFromProblem}
+import leo.modules.embeddings.MalformedLogicSpecificationException
 import leo.modules.input.TPTPParser
 
 import scala.io.Source
 import java.io.{File, FileNotFoundException, PrintWriter}
+import scala.collection.mutable
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
@@ -39,31 +40,54 @@ object EmbeddingApp {
         outfile = Some(if (outputFileName.isEmpty) new PrintWriter(System.out) else new PrintWriter(new File(outputFileName.get)))
         // Read input
         infile = Some(if (inputFileName == "-") io.Source.stdin else io.Source.fromFile(inputFileName))
+        // Create local copy if it is from stdin; since we cannot reset the inputstreamreader afterwards
+        val infileCopyAsString = if (inputFileName == "-") {
+          val res = infile.get.getLines().mkString("\n")
+          infile = Some(io.Source.fromString(res)) // reset infile virtually to stdin input
+          Some(res)
+        } else None
+
         // Parse and select embedding
         val parsedInput = TPTPParser.problem(infile.get)
         val maybeLogicSpec = getLogicSpecFromProblem(parsedInput.formulas)
-        val goalLogic = getLogic(maybeLogicSpec)
-        val embeddingFunction = try {
-          Library.embeddingTable(goalLogic)
-        } catch {
-          case _: NoSuchElementException => throw new UnsupportedLogicException(goalLogic)
+        val maybeGoalLogic = getLogic(maybeLogicSpec)
+        val result = maybeGoalLogic match {
+          case None => // no goal logic set, return input file as-is
+            val sb: mutable.StringBuilder = new mutable.StringBuilder()
+            sb.append("% Info: No logic specification given, input problem is returned unchanged. Maybe specify logic with the -l option?\n")
+            if (tstpOutput) sb.append(s"% SZS status Success for $inputFileName\n")
+            if (tstpOutput) sb.append(s"% SZS output start ListOfFormulae for $inputFileName\n")
+            // if not from stdin, we can safely re-read the input file, so we just reset the infile reader
+            val copyOfInputLines = if (inputFileName == "-") Seq(infileCopyAsString.get) else infile.get.reset().getLines()
+            copyOfInputLines foreach { line => // just print it
+              sb.append(line)
+              sb.append("\n")
+            }
+            if (tstpOutput) sb.append(s"% SZS output end ListOfFormulae for $inputFileName\n")
+            sb.toString()
+          case Some(goalLogic) => // goal logic set, do the embedding steps
+            val embeddingFunction = try {
+              Library.embeddingTable(goalLogic)
+            } catch {
+              case _: NoSuchElementException => throw new UnsupportedLogicException(goalLogic)
+            }
+            // Transform embedding parameters
+            val parameters = parameterNames.map { p =>
+              try {
+                embeddingFunction.embeddingParameter.withName(p)
+              } catch {
+                case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
+              }
+            }
+            // Do embedding
+            // First: Prepend logic specification if none exists.
+            val logicSpec = if (maybeLogicSpec.isDefined) maybeLogicSpec.get else embeddingFunction.generateSpecification(specs)
+            val problemToBeEmbedded = if (maybeLogicSpec.isDefined) parsedInput else TPTP.Problem(parsedInput.includes, parsedInput.formulas.prepended(logicSpec), Map.empty)
+            // Embedding
+            val embeddedProblem = embeddingFunction.apply(problemToBeEmbedded, parameters)
+            generateResult(embeddedProblem, logicSpec, embeddingFunction)
         }
-        // Transform embedding parameters
-        val parameters = parameterNames.map { p =>
-          try {
-            embeddingFunction.embeddingParameter.withName(p)
-          } catch {
-            case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
-          }
-        }
-        // Do embedding
-        // First: Prepend logic specification if none exists.
-        val logicSpec = if (maybeLogicSpec.isDefined) maybeLogicSpec.get else embeddingFunction.generateSpecification(specs)
-        val problemToBeEmbedded = if (maybeLogicSpec.isDefined) parsedInput else TPTP.Problem(parsedInput.includes, parsedInput.formulas.prepended(logicSpec), Map.empty)
-        // Embedding
-        val embeddedProblem = embeddingFunction.apply(problemToBeEmbedded, parameters)
         // Write result
-        val result = generateResult(embeddedProblem, logicSpec, embeddingFunction)
         outfile.get.print(result)
         outfile.get.flush()
         // Error handling
@@ -79,8 +103,6 @@ object EmbeddingApp {
           error = Some(s"Parameter ${e.parameterName} is unknown. Valid parameters are: ${e.allowedParameters}")
         case e: MalformedLogicSpecificationException =>
           error = Some(s"Logic specification in the input file cannot be interpreted: ${e.spec.pretty}")
-        case _: UnspecifiedLogicException =>
-          error = Some(s"Logic specification not found inside of input file and no explicit logic given via -l. Aborting.")
         case e: FileNotFoundException =>
           error = Some(s"File cannot be found or is not readable/writable: ${e.getMessage}")
         case e: TPTPParser.TPTPParseException =>
@@ -116,7 +138,7 @@ object EmbeddingApp {
   private[this] final def generateResult(problem: Problem, logicSpec: AnnotatedFormula, embedding: Embedding): String = {
     import java.util.Calendar
 
-    val sb: StringBuilder = new StringBuilder()
+    val sb: mutable.StringBuilder = new mutable.StringBuilder()
     if (tstpOutput) sb.append(s"% SZS status Success for $inputFileName\n")
     sb.append(s"%%% This output was generated by $name, version $version (library version ${Library.version}).\n")
     sb.append(s"%%% Generated on ${Calendar.getInstance().getTime.toString}\n")
@@ -134,10 +156,10 @@ object EmbeddingApp {
     sb.toString()
   }
 
-  private[this] final def getLogic(maybeSpec: Option[TPTP.AnnotatedFormula]): String = maybeSpec match {
-      case Some(value) => getLogicFromSpec(value)
-      case None if logic.isDefined => logic.get
-      case None => throw new UnspecifiedLogicException
+  private[this] final def getLogic(maybeSpec: Option[TPTP.AnnotatedFormula]): Option[String] = maybeSpec match {
+      case Some(value) => Some(getLogicFromSpec(value))
+      case None if logic.isDefined => Some(logic.get)
+      case None => None
     }
 
   private[this] final def printVersion(): Unit = {
@@ -148,13 +170,17 @@ object EmbeddingApp {
     println(s"usage: $name [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <problem file> [<output file>]")
     println(
       s"""
+        | Embed a (non-classical) TPTP problem file into classical higher-order logic (HOL). The logic
+        | is chosen based on the logic specification within the input file. If there is no logic specification
+        | the input problem is returned unchanged (unless the -l option is given).
+        |
         | <problem file> can be either a file name or '-' (without parentheses) for stdin.
         | If <output file> is specified, the result is written to <output file>, otherwise to stdout.
         |
         | Options:
         |  -l <logic>
         |     If <problem file> does not contain a logic specification statement, explicitly set
-        |     the input format to <logic>. Ignored, if <problem file> contains a logic specification statement.
+        |     the input format to <logic>. Ignored if <problem file> contains a logic specification statement.
         |     Supported <logic>s are: ${Library.embeddingTable.keySet.mkString(", ")}
         |
         |  -p <parameter>
