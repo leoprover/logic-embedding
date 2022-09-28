@@ -1,7 +1,7 @@
 package leo.modules.embeddings
 
 object Library {
-  final def version: String = "1.6"
+  final def version: String = "1.7"
 
   def embeddingTable: Map[String, Embedding] = {
     Map(
@@ -15,7 +15,8 @@ object Library {
       "$$ddl" -> DyadicDeonticLogicEmbedding,
       "$$hybrid" -> HybridLogicEmbedding,
       "$$pal" -> PublicAnnouncementLogicEmbedding,
-      "$$normative" -> NormativeDSLEmbedding
+      "$$normative" -> NormativeDSLEmbedding,
+      "$$termmodal" -> TermModalEmbedding
     )
   }
 }
