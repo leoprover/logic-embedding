@@ -1,8 +1,8 @@
 package leo.modules.embeddings
 
 import leo.datastructures.TPTP
-import TPTP.{AnnotatedFormula, TFFAnnotated, THFAnnotated, TFF, THF}
-import leo.modules.input.TPTPParser.annotatedTHF
+import TPTP.{AnnotatedFormula, TFF, TFFAnnotated, THF, THFAnnotated}
+import leo.modules.input.TPTPParser.{annotatedTHF, thf}
 
 import scala.annotation.unused
 
@@ -21,7 +21,8 @@ object TermModalEmbedding extends Embedding {
   override final val version: String = "1.0"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated = {
-    annotatedTHF(s"thf(logic_spec, logic, $name).")
+    annotatedTHF(s"thf(logic_spec, logic, $name == [ $$$$logic == " +
+      s"${specs.getOrElse("$$logic", throw new EmbeddingException("Parameter '$$logic' not set."))} ]).")
   }
 
   override final def apply(problem: TPTP.Problem,
@@ -91,11 +92,12 @@ object TermModalEmbedding extends Embedding {
         THF.BinaryFormula(THF.App, str2Fun(s"mdia_${serializeType(typ)}"), term)
       }
     }
-    private[this] val functionGoalTypes: mutable.Map[String, TFF.Type] = mutable.Map.empty
-    private[this] def getGoalTypeOfType(ty: TFF.Type): TFF.Type = ty match {
-      case TFF.AtomicType(_, _) => ty
-      case TFF.MappingType(_, right) => right
-      case _ => throw new EmbeddingException(s"Unexpected error in getGoalTypeOfType(ty = ${ty.pretty}).")
+    private[this] val functionGoalTypes: mutable.Map[String, TFF.Type] = mutable.Map.empty // actually, also predicate symbols
+    private[this] val functionArgumentTypes: mutable.Map[String, Seq[THF.Type]] = mutable.Map.empty // strictly function symbols
+    private[this] def argumentTypesAndGoalTypeOfType(ty: TFF.Type): (Seq[TFF.Type], TFF.Type) = ty match {
+      case TFF.AtomicType(_, _) => (Seq.empty, ty)
+      case TFF.MappingType(left, right) => (left, right)
+      case _ => throw new EmbeddingException(s"Unexpected error in argumentAndGoalTypeOfType(ty = ${ty.pretty}).")
     }
     private[this] def getGoalTypeOfTerm(term: TFF.Term, boundVars: Map[String, TFF.Type]): TFF.Type = term match {
       case TFF.AtomicTerm(f, _) => functionGoalTypes(f)
@@ -103,7 +105,7 @@ object TermModalEmbedding extends Embedding {
         case Some(ty) => ty
         case None => throw new EmbeddingException(s"Unbound variable in argument '${term.pretty}' to modal operator.")
       }
-      case TFF.DistinctObject(name) => TFF.AtomicType("$i", Seq.empty)
+      case TFF.DistinctObject(_) => TFF.AtomicType("$i", Seq.empty)
       case TFF.NumberTerm(value) => value match {
         case TPTP.Integer(_) => TFF.AtomicType("$int", Seq.empty)
         case TPTP.Rational(_, _) => TFF.AtomicType("$rat", Seq.empty)
@@ -123,9 +125,10 @@ object TermModalEmbedding extends Embedding {
       val convertedDefinitionFormulas = definitionFormulas.map(convertDefinitionFormula)
       val convertedOtherFormulas = otherFormulas.map(convertAnnotatedFormula)
       val generatedMetaFormulas: Seq[AnnotatedFormula] = generateMetaFormulas()
+      val existencePredicates: Seq[AnnotatedFormula] = generateExistencePredicates()
 
       // new user types first (sort formulas), then our definitions, then all other formulas
-      val result = sortFormulas ++ generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
+      val result = sortFormulas ++ generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ existencePredicates ++ convertedOtherFormulas
       // maybe add comments about warnings etc. in comments. If so, add them to very first formula in output.
       val updatedComments =
         if (result.isEmpty || warnings.isEmpty) problem.formulaComments
@@ -144,7 +147,13 @@ object TermModalEmbedding extends Embedding {
 
     private def convertTypeFormula(input: TFFAnnotated): THFAnnotated = input.formula match {
       case TFF.Typing(atom, typ) =>
-        functionGoalTypes += (atom -> getGoalTypeOfType(typ))
+        val (argTypes, goalTy) = argumentTypesAndGoalTypeOfType(typ)
+        functionGoalTypes += (atom -> goalTy) // Document for type reconstruction in modal operators. Maybe shift to THF types later.
+        goalTy match {
+          case TFF.AtomicType("$o", _) => () // ignore this case, predicates are not important for function symbol collection
+          case _ => // this will be an atomic type that is not $o, so some other base type --> collect function symbol
+          functionArgumentTypes += (atom -> argTypes.map(convertType))
+        }
         val convertedType = convertType(typ)
         THFAnnotated(input.name, input.role, THF.Typing(atom, convertedType), input.annotations)
       case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
@@ -201,7 +210,9 @@ object TermModalEmbedding extends Embedding {
     private def convertFormula(formula: TFF.Formula, boundVars: Map[String, TFF.Type]): THF.Formula = {
       formula match {
         case TFF.AtomicFormula(f, args) =>
-          val simpleResult = THF.FunctionTerm(f, args.map(convertTerm))
+          val convertedFunctionSymbol: THF.Formula = THF.FunctionTerm(f, Seq.empty)
+          val convertedArguments = args.map(convertTerm)
+          val simpleResult = convertedArguments.foldLeft(convertedFunctionSymbol) { case (fun,arg) => THF.BinaryFormula(THF.App, fun, arg) }
           if (tptpDefinedPredicateSymbols.contains(f)) {
             THF.QuantifiedFormula(THF.^, Seq(("W", THF.FunctionTerm(worldTypeName, Seq.empty))), simpleResult)
           } else simpleResult
@@ -250,7 +261,10 @@ object TermModalEmbedding extends Embedding {
     }
 
     private def convertTerm(term: TFF.Term): THF.Formula = term match {
-      case TFF.AtomicTerm(f, args) => THF.FunctionTerm(f, args.map(convertTerm))
+      case TFF.AtomicTerm(f, args) =>
+        val convertedFunctionSymbol: THF.Formula = THF.FunctionTerm(f, Seq.empty)
+        val convertedArguments = args.map(convertTerm)
+        convertedArguments.foldLeft(convertedFunctionSymbol) { case (fun, arg) => THF.BinaryFormula(THF.App, fun, arg) }
       case TFF.Variable(name) => THF.Variable(name)
       case TFF.DistinctObject(name) => THF.DistinctObject(name)
       case TFF.NumberTerm(value) => THF.NumberTerm(value)
@@ -355,6 +369,26 @@ object TermModalEmbedding extends Embedding {
       }
       /////////////////////////////////////////////////////////////
       // Return all
+      result.toSeq
+    }
+
+    private def generateExistencePredicates(): Seq[TPTP.AnnotatedFormula] = {
+      import scala.collection.mutable
+
+      val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
+      functionArgumentTypes.foreach { case (functionName, argTypes) =>
+        val resultType = convertType(functionGoalTypes(functionName))
+        if (quantifierTypes.contains(resultType)) {
+          val relevantTypes = argTypes.filter(quantifierTypes.contains).toSet
+          val typesWithIndex = argTypes.zipWithIndex
+          val variables = typesWithIndex.map { case (ty, idx) => s"X$idx:${ty.pretty}" }.mkString(",")
+          val predicates = typesWithIndex.filter(x => relevantTypes.contains(x._1)).map { case (ty, idx) => s"(eiw_${serializeType(ty)} @ X$idx @ W)" }
+          val antecedent = s"(! [$variables]: ((${predicates.mkString(" & ")})" // two opening ( more
+          val consequent = s"(eiw_${serializeType(resultType)} @ (${typesWithIndex.foldLeft(functionName) { case (expr, arg) => s"($expr @ X${arg._2})" }}) @ W)) )"
+          val formula = annotatedTHF(s"thf(eiw_$functionName, axiom, ![W:$worldTypeName]: ($antecedent => $consequent ) ).")
+          result.append(formula)
+        }
+      }
       result.toSeq
     }
 
