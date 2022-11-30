@@ -2,7 +2,7 @@ package leo
 package modules
 package embeddings
 
-import datastructures.{FlexMap, TPTP}
+import datastructures.TPTP
 import TPTP.{AnnotatedFormula, THF, THFAnnotated}
 
 import scala.annotation.unused
@@ -56,7 +56,6 @@ object ModalEmbedding extends Embedding {
     import ModalEmbeddingOption._
     import scala.collection.mutable
     ///////////////////////////////////////////////////////////////////
-    private final val state = FlexMap.apply()
 
     // Semantics dimensions
     // (1) Rigid or flexible symbols
@@ -81,7 +80,7 @@ object ModalEmbedding extends Embedding {
     domainMap += ("$o" -> ConstantDomain)
 
     // (3) Modal operator properties, for now as string
-    private final val MODALS = state.createKey[THF.Formula, Seq[String]]()
+    private[this] var modalsMap: Map[THF.Formula, Seq[String]] = Map.empty
     private[this] var modalDefaultExists: Boolean = false
     ////////////////////////////////////////////////////////////////////
     // Embedding options
@@ -464,7 +463,10 @@ object ModalEmbedding extends Embedding {
       if (isMultiModal) {
         val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) indexedSemanticAxiomTable else indexedSyntacticAxiomTable
         modalOperators foreach { index =>
-          val modalSystem = state(MODALS).apply(index)
+          val modalSystem = modalsMap.get(index) match {
+            case Some(value) => value
+            case None => if (modalDefaultExists) modalsMap.default(index) else throw new EmbeddingException(s"Modal properties for index '${index.pretty}' not defined; and no default properties specified. Aborting.")
+          }
           val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
           axiomNames foreach { ax =>
             val axiom = axiomTable.apply(ax)
@@ -475,15 +477,11 @@ object ModalEmbedding extends Embedding {
           }
         }
       } else {
-        val modalSystem = state.getDefault(MODALS)
-        modalSystem match {
-          case Some(value) =>
-            val axiomNames = if (isModalSystemName(value.head)) modalSystemTable(value.head) else value
-            val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) semanticAxiomTable else syntacticAxiomTable
-            val modalAxioms = axiomNames.flatMap(axiomTable).toSet
-            result.appendAll(modalAxioms)
-          case None => throw new EmbeddingException(s"No semantics for modal operators specified, embedding not possible.")
-        }
+        val modalSystem = if (modalDefaultExists) modalsMap.default(THF.FunctionTerm("*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
+        val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
+        val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) semanticAxiomTable else syntacticAxiomTable
+        val modalAxioms = axiomNames.flatMap(axiomTable).toSet
+        result.appendAll(modalAxioms)
       }
       /////////////////////////////////////////////////////////////
       // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary)
@@ -1056,9 +1054,9 @@ object ModalEmbedding extends Embedding {
                 case "$modalities" => val (default, map) = parseListRHS(rhs)
                   if (default.nonEmpty) {
                     modalDefaultExists = true
-                    if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec)))
-                      state.setDefault(MODALS, default)
-                    else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[",",", "]")}")
+                    if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
+                      modalsMap = modalsMap.withDefaultValue(default)
+                    } else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[",",", "]")}")
                   }
                   map foreach { case (lhs, modalspec) =>
                     val index0 = lhs match {
@@ -1069,9 +1067,10 @@ object ModalEmbedding extends Embedding {
                     }
                     val index = escapeModalIndex(index0)
                     if (modalspec.nonEmpty) {
-                      if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec)))
-                        state(MODALS) += (index -> modalspec)
-                      else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[",",", "]")}")
+                      if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
+//                        state(MODALS) += (index -> modalspec)
+                        modalsMap = modalsMap + (index -> modalspec)
+                      } else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[",",", "]")}")
                     }
                   }
                 case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
