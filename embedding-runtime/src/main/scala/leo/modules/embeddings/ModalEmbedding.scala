@@ -22,7 +22,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.5.5"
+  override final def version: String = "1.6.0"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
