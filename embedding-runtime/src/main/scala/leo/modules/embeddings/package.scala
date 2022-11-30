@@ -2,9 +2,10 @@ package leo
 package modules
 
 import leo.datastructures.TPTP
-import leo.datastructures.TPTP.{AnnotatedFormula, TFF, TFFAnnotated, THF}
+import leo.datastructures.TPTP.{AnnotatedFormula, TFF, TFFAnnotated, THF, THFAnnotated}
 
 import java.util.logging.Logger
+import scala.annotation.tailrec
 
 
 package object embeddings {
@@ -19,9 +20,9 @@ package object embeddings {
 
   final val tptpDefinedUnaryArithmeticFunctionSymbols: Seq[String] = Seq("$uminus", "$floor", "$ceiling", "$truncate", "$round",
   "$is_int", "$is_rat", "$to_int", "$to_rat", "$to_real")
-
   final val tptpDefinedBinaryArithmeticFunctionSymbols: Seq[String] = Seq("$difference", "$sum", "$product", "$quotient",
     "$quotient_e", "$quotient_t", "$quotient_f", "$remainder_e", "$remainder_t", "$remainder_f")
+  final val tptpDefinedFunctionSymbols: Seq[String] = tptpDefinedUnaryArithmeticFunctionSymbols ++ tptpDefinedBinaryArithmeticFunctionSymbols
 
   final def getLogicSpecFromProblem(formulas: Seq[TPTP.AnnotatedFormula]): Option[TPTP.AnnotatedFormula] = {
     formulas.find(f => f.role == "logic")
@@ -56,6 +57,56 @@ package object embeddings {
     }
 
   }
+  @tailrec
+  final def goalType(typ: THF.Type): THF.Type = {
+    typ match {
+      case THF.BinaryFormula(THF.FunTyConstructor, _, right) => goalType(right)
+      case _ => typ
+    }
+  }
+
+  type THFLogicSpec = THFAnnotated
+  type THFSortDecl = THFAnnotated
+  type THFTypeDecl = THFAnnotated
+  type THFDefDecl = THFAnnotated
+  type THFRemainingFormulas = THFAnnotated
+  protected[embeddings] final def splitTHFInputByDifferentKindOfFormulas(input: Seq[AnnotatedFormula]):
+  (THFLogicSpec, Seq[THFSortDecl], Seq[THFTypeDecl], Seq[THFDefDecl], Seq[THFRemainingFormulas]) = {
+    import collection.mutable
+    val logicSpec: mutable.Buffer[THFLogicSpec] = mutable.Buffer.empty
+    val sortDecls: mutable.Buffer[THFSortDecl] = mutable.Buffer.empty
+    val typeDecls: mutable.Buffer[THFTypeDecl] = mutable.Buffer.empty
+    val defDecls: mutable.Buffer[THFDefDecl] = mutable.Buffer.empty
+    val remainingFormulas: mutable.Buffer[THFRemainingFormulas] = mutable.Buffer.empty
+
+    input.foreach {
+      case f@THFAnnotated(_, role, formula, _) => role match {
+        case "logic" => logicSpec.append(f)
+        case "type" => formula match {
+          case THF.Typing(_, typ) => typ match {
+            case THF.FunctionTerm("$tType", Seq()) => sortDecls.append(f)
+            case _ => typeDecls.append(f)
+          }
+          case _ => throw new EmbeddingException(s"Malformed type definition in formula '${f.name}', aborting.")
+        }
+        case "definition" => defDecls.append(f)
+        case _ => remainingFormulas.append(f)
+      }
+      case f => throw new EmbeddingException(s"THF formula expected but ${f.formulaType.toString} formula given. Aborting.")
+    }
+
+    if (logicSpec.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")
+    else {
+      val spec = if (logicSpec.size > 1) {
+        Logger.getGlobal.warning(s"More than one logic specification given; only using the first one ('${logicSpec.head.name}'), " +
+          s"the remaining ones are ignored.")
+        logicSpec.head
+      } else logicSpec.head
+      (spec, sortDecls.toSeq, typeDecls.toSeq, defDecls.toSeq, remainingFormulas.toSeq)
+    }
+
+  }
+
 
   type LogicSpec = AnnotatedFormula
   type SortDecl = AnnotatedFormula
