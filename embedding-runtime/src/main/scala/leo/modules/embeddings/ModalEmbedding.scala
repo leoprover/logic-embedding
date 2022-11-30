@@ -65,6 +65,7 @@ object ModalEmbedding extends Embedding {
     private[this] final case object Flexible extends Rigidity
     private[this] var rigidityMap: Map[String, Rigidity] = Map.empty
     private[this] var reverseSymbolTypeMap: Map[THF.Type, Set[String]] = Map.empty.withDefaultValue(Set.empty)
+    private[this] var rigidityDefaultExists: Boolean = false
     /* Initialize map */
     tptpDefinedPredicateSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
     tptpDefinedFunctionSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
@@ -81,6 +82,7 @@ object ModalEmbedding extends Embedding {
 
     // (3) Modal operator properties, for now as string
     private final val MODALS = state.createKey[THF.Formula, Seq[String]]()
+    private[this] var modalDefaultExists: Boolean = false
     ////////////////////////////////////////////////////////////////////
     // Embedding options
     private val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
@@ -176,8 +178,12 @@ object ModalEmbedding extends Embedding {
       formula match {
         case THF.FunctionTerm(f, args) =>
           val convertedArgs = THF.FunctionTerm(f, args.map(convertFormula(_, boundVars)))
-          rigidityMap(f) match {
-            case Rigid => worldAbstraction(convertedArgs, boundVars)
+          val rigidity = rigidityMap.get(f) match {
+            case Some(value) => value
+            case None => if (rigidityDefaultExists) rigidityMap.default(f) else throw new EmbeddingException(s"Rigidity of symbol '$f' not defined and no default rigidity specified. Aborting.")
+          }
+          rigidity match {
+            case Rigid => worldAbstraction (convertedArgs, boundVars)
             case Flexible => convertedArgs
           }
 
@@ -313,17 +319,21 @@ object ModalEmbedding extends Embedding {
       val convertedType = convertVariableType(variable._2)
       val convertedVariable: THF.TypedVariable = (variable._1, convertedType)
       quantifierType(convertedType)
-      if (domainMap(variable._2.pretty) == ConstantDomain) THF.QuantifiedFormula(quantifier, Seq(convertedVariable), acc)
-      else {
-        /* with exists-in-world guard */
-        val eiwPredicate = if (polymorphic) "eiw" else s"eiw_${serializeType(convertedType)}"
-        val appliedEiw = THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(eiwPredicate), THF.Variable(variable._1)), THF.Variable(worldName))
-        val convertedBody = quantifier match {
-          case THF.! => THF.BinaryFormula(THF.Impl, appliedEiw, acc)
-          case THF.? => THF.BinaryFormula(THF.&, appliedEiw, acc)
-          case _ => acc
+      try {
+        if (domainMap(variable._2.pretty) == ConstantDomain) THF.QuantifiedFormula(quantifier, Seq(convertedVariable), acc)
+        else {
+          /* with exists-in-world guard */
+          val eiwPredicate = if (polymorphic) "eiw" else s"eiw_${serializeType(convertedType)}"
+          val appliedEiw = THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(eiwPredicate), THF.Variable(variable._1)), THF.Variable(worldName))
+          val convertedBody = quantifier match {
+            case THF.! => THF.BinaryFormula(THF.Impl, appliedEiw, acc)
+            case THF.? => THF.BinaryFormula(THF.&, appliedEiw, acc)
+            case _ => acc
+          }
+          THF.QuantifiedFormula(quantifier, Seq(convertedVariable), convertedBody)
         }
-        THF.QuantifiedFormula(quantifier, Seq(convertedVariable), convertedBody)
+      } catch {
+        case _:NoSuchElementException => throw new EmbeddingException(s"Domain semantics for type '${variable._2.pretty}' not defined; and no default semantics specified. Aborting.")
       }
     }
 
@@ -334,7 +344,7 @@ object ModalEmbedding extends Embedding {
           val goal: TPTP.THF.Type = goalType(typ)
           goal match { // Special treatment for formulas/predicates: flexible by default
             case THF.FunctionTerm("$o", Seq()) => Flexible
-            case _ => rigidityMap(name) // use default
+            case _ => if (rigidityDefaultExists) rigidityMap.default(name) else throw new EmbeddingException(s"Rigidity of symbol '$name' not defined and no default rigidity specified. Aborting.")
           }
       }
     }
@@ -477,26 +487,52 @@ object ModalEmbedding extends Embedding {
       }
       /////////////////////////////////////////////////////////////
       // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary)
-      if (polymorphic) {
-        if (quantifierTypes.nonEmpty) {
-          if (quantifierTypes.exists(ty => domainMap(ty.pretty) != ConstantDomain)) {
-            result.appendAll(polyIndexedExistsInWorldTPTPDef()) // define poly eiw
-            quantifierTypes.foreach { ty => // postulate existence for each constant symbol of that type (if any)
-              reverseSymbolTypeMap(ty).foreach { constant =>
-                result.appendAll(polyIndexedConstantExistsInWorldTPTPDef(ty, constant))
+      try {
+        if (polymorphic) {
+          if (quantifierTypes.nonEmpty) {
+            if (quantifierTypes.exists(ty => domainMap(ty.pretty) != ConstantDomain)) {
+              result.appendAll(polyIndexedExistsInWorldTPTPDef()) // define poly eiw
+              quantifierTypes.foreach { ty => // postulate existence for each constant symbol of that type (if any)
+                reverseSymbolTypeMap(ty).foreach { constant =>
+                  result.appendAll(polyIndexedConstantExistsInWorldTPTPDef(ty, constant))
+                }
+              }
+            }
+            if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL) {
+              quantifierTypes foreach { ty =>
+                if (domainMap(ty.pretty) == CumulativeDomain)
+                  result.appendAll(polyIndexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw with that type
+                if (domainMap(ty.pretty) == DecreasingDomain)
+                  result.appendAll(polyIndexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw with that type
+              }
+            } else {
+              // in case of syntactical embedding: write restrictions using CBF resp. BF now.
+              quantifierTypes foreach { ty =>
+                if (domainMap(ty.pretty) == CumulativeDomain) {
+                  result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
+                } else if (domainMap(ty.pretty) == DecreasingDomain) {
+                  result.appendAll(indexedBarcanFormulaTPTPDef(ty))
+                }
               }
             }
           }
-          if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL) {
-            quantifierTypes foreach { ty =>
-              if (domainMap(ty.pretty) == CumulativeDomain)
-                result.appendAll(polyIndexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw with that type
-              if (domainMap(ty.pretty) == DecreasingDomain)
-                result.appendAll(polyIndexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw with that type
+        } else {
+          quantifierTypes foreach { ty =>
+            if (domainMap(ty.pretty) != ConstantDomain) {
+              result.appendAll(indexedExistsInWorldTPTPDef(ty)) // define eiw with standard axioms
+              quantifierTypes.foreach { ty => // postulate existence for each constant symbol of that type (if any)
+                reverseSymbolTypeMap(ty).foreach { constant =>
+                  result.appendAll(indexedConstantExistsInWorldTPTPDef(ty, constant))
+                }
+              }
             }
-          } else {
-            // in case of syntactical embedding: write restrictions using CBF resp. BF now.
-            quantifierTypes foreach { ty =>
+            if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL) {
+              if (domainMap(ty.pretty) == CumulativeDomain)
+                result.appendAll(indexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw
+              else if (domainMap(ty.pretty) == DecreasingDomain)
+                result.appendAll(indexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw
+            } else {
+              // in case of syntactical embedding: write restrictions using CBF resp. BF now.
               if (domainMap(ty.pretty) == CumulativeDomain) {
                 result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
               } else if (domainMap(ty.pretty) == DecreasingDomain) {
@@ -505,30 +541,8 @@ object ModalEmbedding extends Embedding {
             }
           }
         }
-      } else {
-        quantifierTypes foreach { ty =>
-          if (domainMap(ty.pretty) != ConstantDomain) {
-            result.appendAll(indexedExistsInWorldTPTPDef(ty)) // define eiw with standard axioms
-            quantifierTypes.foreach { ty => // postulate existence for each constant symbol of that type (if any)
-              reverseSymbolTypeMap(ty).foreach { constant =>
-                result.appendAll(indexedConstantExistsInWorldTPTPDef(ty, constant))
-              }
-            }
-          }
-          if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL) {
-            if (domainMap(ty.pretty) == CumulativeDomain)
-              result.appendAll(indexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw
-            else if (domainMap(ty.pretty) == DecreasingDomain)
-              result.appendAll(indexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw
-          } else {
-            // in case of syntactical embedding: write restrictions using CBF resp. BF now.
-            if (domainMap(ty.pretty) == CumulativeDomain) {
-              result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
-            } else if (domainMap(ty.pretty) == DecreasingDomain) {
-              result.appendAll(indexedBarcanFormulaTPTPDef(ty))
-            }
-          }
-        }
+      } catch {
+        case _:NoSuchElementException => throw new EmbeddingException(s"Domain semantics for some type not defined; and no default semantics specified. Aborting.")
       }
       /////////////////////////////////////////////////////////////
       // Return all
@@ -1006,6 +1020,7 @@ object ModalEmbedding extends Embedding {
               propertyName match {
                 case "$constants" =>
                   val (default, map) = parseRHS(rhs)
+                  if (default.isDefined) { rigidityDefaultExists = true }
                   default match {
                     case Some("$rigid") => rigidityMap = rigidityMap.withDefaultValue(Rigid)
                     case Some("$flexible") => rigidityMap = rigidityMap.withDefaultValue(Flexible)
@@ -1040,6 +1055,7 @@ object ModalEmbedding extends Embedding {
                   }
                 case "$modalities" => val (default, map) = parseListRHS(rhs)
                   if (default.nonEmpty) {
+                    modalDefaultExists = true
                     if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec)))
                       state.setDefault(MODALS, default)
                     else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[",",", "]")}")
