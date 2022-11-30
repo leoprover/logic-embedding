@@ -165,64 +165,9 @@ object ModalEmbedding extends Embedding {
         case _ => throw new EmbeddingException(s"Only embedding of THF files supported.")
       }
     }
-//
-//    private def mkLambda(variable: THF.TypedVariable, body: THF.Formula): THF.Formula = {
-//      THF.QuantifiedFormula(THF.^, Seq(variable), body)
-//    }
-//
-    private def mkSingleQuantified(quantifier: THF.Quantifier, worldName: String)(variable: THF.TypedVariable, acc: THF.Formula): THF.Formula = {
-      val convertedType = convertVariableType(variable._2)
-      val convertedVariable: THF.TypedVariable = (variable._1, convertedType)
-      quantifierType(convertedType)
-      if (domainMap(variable._2.pretty) == ConstantDomain) THF.QuantifiedFormula(quantifier, Seq(convertedVariable), acc)
-      else { /* with exists-in-world guard */
-        val eiwPredicate = if (polymorphic) "eiw" else s"eiw_${serializeType(convertedType)}"
-        val appliedEiw = THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(eiwPredicate), THF.Variable(variable._1)), THF.Variable(worldName))
-        val convertedBody = quantifier match {
-          case THF.! => THF.BinaryFormula(THF.Impl, appliedEiw, acc)
-          case THF.? => THF.BinaryFormula(THF.&, appliedEiw, acc)
-          case _ => acc
-        }
-        THF.QuantifiedFormula(quantifier, Seq(convertedVariable), convertedBody)
-      }
-//  val convertedQuantifier: THF.Formula =
-//        if (polymorphic) THF.BinaryFormula(THF.App, convertQuantifier(quantifier, variable._2, convertedVariable._2), convertedVariable._2)
-//        else convertQuantifier(quantifier, variable._2, convertedVariable._2)
-//      THF.BinaryFormula(THF.App, convertedQuantifier, mkLambda(convertedVariable, acc))
-    }
 
-    private def getRigidityOfSymbol(name: String, typ: THF.Type): Rigidity = {
-      rigidityMap.get(name) match {
-        case Some(value) => value
-        case None =>
-          val goal: TPTP.THF.Type = goalType(typ)
-          goal match { // Special treatment for formulas/predicates: flexible by default
-            case THF.FunctionTerm("$o", Seq()) => Flexible
-            case _ => rigidityMap(name) // use default
-          }
-      }
-    }
-
-    private def getDefaultRigidityOfType(typ: THF.Type): Rigidity = {
-      val goal: TPTP.THF.Type = goalType(typ)
-      goal match { // Special treatment for formulas/predicates variables: flexible
-        case THF.FunctionTerm("$o", Seq()) => Flexible
-        case _ => Rigid // other variables are rigid.
-      }
-    }
-
-    private[this] def generateSafeName(boundVars: Map[String, THF.Type]): String = {
-      var proposedName: String = "W"
-      while (boundVars.contains(proposedName)) {
-        proposedName = proposedName.concat("W")
-      }
-      proposedName
-    }
-    @inline private[this] def worldAbstraction(body: THF.Formula, boundVars: Map[String, THF.Type]): THF.Formula =
-      THF.QuantifiedFormula(THF.^, Seq((generateSafeName(boundVars),THF.FunctionTerm(worldTypeName, Seq.empty))), body)
-
-    @inline private[this] def worldAbstraction(body: THF.Formula, name: String): THF.Formula =
-      THF.QuantifiedFormula(THF.^, Seq((name, THF.FunctionTerm(worldTypeName, Seq.empty))), body)
+    @inline private[this] def mglobal: THF.Formula = str2Fun("mglobal")
+    @inline private[this] def mlocal: THF.Formula = str2Fun("mlocal")
 
     @inline private def convertFormula(formula: THF.Formula): THF.Formula = convertFormula(formula, Map.empty)
     private def convertFormula(formula: THF.Formula, boundVars: Map[String, THF.Type]): THF.Formula = {
@@ -236,7 +181,18 @@ object ModalEmbedding extends Embedding {
             case Flexible => convertedArgs
           }
 
-          // Special case: Modal operators
+        case THF.Variable(name) =>
+          boundVars.get(name) match {
+            case Some(ty) =>
+              val goal = goalType(ty)
+              goal match { // Special treatment for formulas/predicates: flexible
+                case THF.FunctionTerm("$o", Seq()) => formula
+                case _ => worldAbstraction(formula, boundVars) //make type correct by abstraction
+              }
+            case None => worldAbstraction(formula, boundVars) //loose bound variable, just do anything; the formula is not well-formed anyway.
+          }
+
+        // Special case: Modal operators (they are not constants from the signature)
         case THF.BinaryFormula(App, THF.ConnectiveTerm(nclConnective), body) if nclConnective.isInstanceOf[THF.VararyConnective] =>
           val convertedBody = convertFormula(body, boundVars)
           val convertedConnective: THF.Formula = nclConnective match {
@@ -274,6 +230,7 @@ object ModalEmbedding extends Embedding {
             case _ => throw new EmbeddingException(s"Unsupported non-classical operator: '${nclConnective.pretty}'")
           }
           THF.BinaryFormula(THF.App, convertedConnective, convertedBody)
+          // Special case END
 
         case THF.BinaryFormula(connective, left, right) =>
           val convertedLeft: TPTP.THF.Formula = convertFormula(left, boundVars)
@@ -282,136 +239,36 @@ object ModalEmbedding extends Embedding {
           val appliedLeft = THF.BinaryFormula(THF.App, convertedLeft, THF.Variable(safeName))
           val appliedRight = THF.BinaryFormula(THF.App, convertedRight, THF.Variable(safeName))
           worldAbstraction(THF.BinaryFormula(connective, appliedLeft, appliedRight), safeName)
-//          thf(s"^[W: $worldTypeName]: ((${convertedLeft.pretty} @ W) @ (${convertedRight.pretty} @ W))")
 
-//        case THF.QuantifiedFormula(THF.^, variableList, body) =>
-//          val convertedBody = convertFormula(body)
-////          val convertedVariableList = variableList.map {case (name, ty) => (name, convertConstantSymbolType(ty))}
-////          THF.QuantifiedFormula(THF.^, convertedVariableList, convertedBody)
-//        thf(s"^[W: $worldTypeName]: (^[${variableList.map(vari => s"${vari._1}:${vari._2.pretty}").mkString(",")}]: (${convertedBody.pretty}))")
+        case THF.UnaryFormula(connective, body) =>
+          /* In theory, this could be rewritten to an application of body to a constant.
+             But this results in a ugly formula, because TPTP has a dedicated syntax for quantifications.
+             So we replace the result of doing this with an identical expression that uses a nicer syntax */
+          val convertedBody: TPTP.THF.Formula = convertFormula(body, boundVars)
+          val safeName = generateSafeName(boundVars) // a name that is not free in the formula
+          val appliedBody = THF.BinaryFormula(THF.App, convertedBody, THF.Variable(safeName))
+          worldAbstraction(THF.UnaryFormula(connective, appliedBody), safeName)
 
         case THF.QuantifiedFormula(quantifier, variableList, body) =>
-          /* in theory, this suffices: (a quantified expression is just a lambda applied to constant) */
-          //          val rewritten = THF.BinaryFormula(App, <quantifier-as-constant>, <body as lambda abstraction>)
-          //          convertFormula(rewritten, boundVars) -- with a lambda base case
-          /* But this results in a ugly formula, because TPTP has a dedicated syntax for quantifications */
-          /* So we replace the result of doing this with an indentical expression uses a nicer syntax */
-//          val updatedVariableList = variableList.map {case (name, ty) => (name, convertVariableType(ty)) }
+          /* in theory, this could be rewritten to a lambda applied to a constant.
+             But this results in a ugly formula, because TPTP has a dedicated syntax for quantifications.
+             So we replace the result of doing this with an identical expression that uses a nicer syntax */
           val updatedBoundVars = boundVars.concat(variableList)
           val convertedBody = convertFormula(body, updatedBoundVars)
           val safeName = generateSafeName(updatedBoundVars) // a name that is not free in the formula
           val appliedBody: THF.Formula = THF.BinaryFormula(App, convertedBody, THF.Variable(safeName))
           // Step through variables one-by-one to allow introducing exists-in-world-predicates
           val result = variableList.foldRight(appliedBody)(mkSingleQuantified(quantifier, safeName))
-
-//          variableList.foldRight(convertedBody)(mkSingleQuantified(quantifier))
           worldAbstraction(result, safeName)
-//          thf(s"^[W: $worldTypeName]: (${quantifier.pretty} [${variableList.map(vari => s"${vari._1}:${vari._2.pretty}").mkString(",")}]: ((${convertedBody.pretty}) @ W))")
-
-        case THF.Variable(name) =>
-          boundVars.get(name) match {
-            case Some(ty) =>
-              val goal = goalType(ty)
-              goal match { // Special treatment for formulas/predicates: flexible
-                case THF.FunctionTerm("$o", Seq()) => formula
-                case _ => worldAbstraction(formula, boundVars) //make type correct by abstraction
-              }
-            case None => worldAbstraction(formula, boundVars) //loose bound variable, just do anything; the formula is not well-formed anyway.
-          }
-
-        case THF.UnaryFormula(connective, body) =>
-          /* in theory, this suffices: (a connective is just a constant applied to arguments) */
-//          val convertedConnective: THF.Formula = convertFormula(THF.ConnectiveTerm(connective), boundVars)
-//          val rewritten = THF.BinaryFormula(App, convertedConnective, body)
-//          convertFormula(rewritten, boundVars)
-          /* But this results in a ugly formula, because TPTP has a dedicated syntax for connectives */
-          /* So we replace the result of doing this with an indentical expression uses a nicer syntax */
-          val convertedBody: TPTP.THF.Formula = convertFormula(body, boundVars)
-          val safeName = generateSafeName(boundVars) // a name that is not free in the formula
-          val appliedBody = THF.BinaryFormula(THF.App, convertedBody, THF.Variable(safeName))
-          worldAbstraction(THF.UnaryFormula(connective, appliedBody), safeName)
-
-//          val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
-//          val convertedBody: TPTP.THF.Formula = convertFormula(body, boundVars)
-//          THF.BinaryFormula(App, convertedConnective, convertedBody)
-
-        /* = and != are extra cases so we don't need to introduce defined symbols for them. Only works for first-order equality. */
-//        case THF.BinaryFormula(equalityLike, left, right) if Seq(Eq, Neq).contains(equalityLike) =>
-//          warnings.append(" WARNING: Equality is interpreted as full congruence, also under modal operators. This might " +
-//            "not be want you want (or it may). Proceed with care, you have been warned.")
-//          val convertedLeft: TPTP.THF.Formula = convertFormula(left, boundVars)
-//          val convertedRight: TPTP.THF.Formula = convertFormula(right, boundVars)
-//          val body = THF.BinaryFormula(equalityLike, convertedLeft, convertedRight)
-//          worldAbstraction(body, boundVars)
-//          THF.QuantifiedFormula(THF.^, Seq(("W", THF.FunctionTerm(worldTypeName, Seq.empty))), body)
-
-        /* connective is always a classical connective, because the {...} @ things are ConnectiveTerms applied to arguments. */
-//        case THF.BinaryFormula(connective, left, right) =>
-          /* in theory, this suffices: (a connective is just a constant applied to arguments) */
-//          val convertedConnective: THF.Formula = convertFormula(THF.ConnectiveTerm(connective), boundVars)
-//          val rewritten = THF.BinaryFormula(App, THF.BinaryFormula(App, convertedConnective, left), right)
-//          convertFormula(rewritten, boundVars)
-          /* But this results in a ugly formula, because TPTP has a dedicated syntax for connectives */
-          /* So we replace the result of doing this with an indentical expression uses a nicer syntax */
-
-
-
-//          val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
-//          val convertedLeft: TPTP.THF.Formula = convertFormula(left, boundVars)
-//          val convertedRight: TPTP.THF.Formula = convertFormula(right, boundVars)
-//          THF.BinaryFormula(App, THF.BinaryFormula(App, convertedConnective, convertedLeft), convertedRight)
-//          val appliedLeft = THF.BinaryFormula(App, convertedLeft, THF.Variable("W"))
-//          val appliedRight = THF.BinaryFormula(App, convertedRight, THF.Variable("W"))
-//          val combined = THF.BinaryFormula(connective, appliedLeft, appliedRight)
-//          THF.QuantifiedFormula(THF.^, Seq(("W", THF.FunctionTerm(worldTypeName, Seq.empty))), combined)
-//          THF.BinaryFormula(App, THF.BinaryFormula(App, convertedConnective, convertedLeft), convertedRight)
 
         case THF.ConnectiveTerm(conn) =>
           val converted = conn match {
             case _: THF.VararyConnective => throw new EmbeddingException("Modal operators not allowed as constant symbols.")
-//            // Box operator
-//            case THF.NonclassicalBox(index) => index match {
-//              case Some(index0) => mboxIndexed(index0)
-//              case None => str2Fun("mbox")
-//            }
-//            // Diamond operator
-//            case THF.NonclassicalDiamond(index) => index match {
-//              case Some(index0) => mdiaIndexed(index0)
-//              case None => str2Fun("mdia")
-//            }
-//            case THF.NonclassicalLongOperator(name, parameters) =>
-//              name match {
-//                case "$box" | "$necessary" | "$obligatory" | "$knows" | "$believes" => parameters match {
-//                  case Seq() => str2Fun("mbox")
-//                  case Seq(Left(index0)) => mboxIndexed(index0)
-//                  case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
-//                }
-//                case "$dia" | "$possible" | "$permissible" | "$canKnow" | "$canBelieve" => parameters match {
-//                  case Seq() => str2Fun("mdia")
-//                  case Seq(Left(index0)) => mdiaIndexed(index0)
-//                  case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
-//                }
-//                case "$forbidden" => parameters match {
-//                  case Seq() =>
-//                    val box = str2Fun("mbox")
-//                    modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
-//                  case Seq(Left(index0)) =>
-//                    val box = mboxIndexed(index0)
-//                    modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
-//                  case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
-//                }
-//                case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
-//              }
             case _ => formula
           }
           worldAbstraction(converted, boundVars) // connectives are rigid: so do a world abstraction
-//          THF.QuantifiedFormula(THF.^, Seq(("W", THF.FunctionTerm(worldTypeName, Seq.empty))), converted)
 
-
-        case THF.DefinedTH1ConstantTerm(_) =>
-          worldAbstraction(formula, boundVars)
-//          THF.QuantifiedFormula(THF.^, Seq(("W", THF.FunctionTerm(worldTypeName, Seq.empty))), formula)
-
+        // TPTP special cases BEGIN
         case THF.Tuple(elements) =>
           val convertedElements: Seq[TPTP.THF.Formula] = elements.map(convertFormula(_, boundVars))
           THF.Tuple(convertedElements)
@@ -425,138 +282,85 @@ object ModalEmbedding extends Embedding {
           val appliedThn = THF.BinaryFormula(THF.App, convertedThn, THF.Variable(safeName))
           val appliedEls = THF.BinaryFormula(THF.App, convertedEls, THF.Variable(safeName))
           worldAbstraction(THF.ConditionalTerm(appliedCond, appliedThn, appliedEls), safeName)
-//          localFormulaExists = true  // For what was this here?
-//          val conditionalBody = THF.ConditionalTerm(
-//            THF.BinaryFormula(THF.App, convertedCondition, THF.Variable("W")),
-//            THF.BinaryFormula(THF.App, convertedThn, THF.Variable("W")),
-//            THF.BinaryFormula(THF.App, convertedEls, THF.Variable("W")))
-//          THF.QuantifiedFormula(THF.^, Seq(("W", THF.FunctionTerm(worldTypeName, Seq.empty))), conditionalBody)
-
 
         case THF.LetTerm(typing, binding, body) => // Treat new symbols like bound variables
           val convertedTyping: Map[String, TPTP.THF.Type] = typing.map { case (name, ty) => (name, convertVariableType(ty)) }
           val convertedBinding: Seq[(TPTP.THF.Formula, TPTP.THF.Formula)] = binding.map(a => (convertFormula(a._1, boundVars), convertFormula(a._2, boundVars)))
           val convertedBody = convertFormula(body, boundVars)
           THF.LetTerm(convertedTyping, convertedBinding, convertedBody)
-        case THF.DistinctObject(_) => worldAbstraction(formula, boundVars)
-        case THF.NumberTerm(_) => worldAbstraction(formula, boundVars)
+        // TPTP special cases END
+
+        /* Remaining cases are:
+        *  - THF.DefinedTH1ConstantTerm(_)
+        *  - THF.DistinctObject(_)
+        *  - THF.NumberTerm(_).
+        * They are all the same (rigid constants). */
+        case _ => worldAbstraction(formula, boundVars)
       }
     }
 
-//    private[this] val inlineMifDef: THF.Formula =
-//      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mimplies @ B @ A)")
-//    private[this] val inlineMniffDef: THF.Formula =
-//      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mequiv @ A @ B))")
-//    private[this] val inlineMnorDef: THF.Formula =
-//      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mor @ A @ B))")
-//    private[this] val inlineMnandDef: THF.Formula =
-//      modules.input.TPTPParser.thf(s"^[A: $worldTypeName > $$o, B: $worldTypeName > $$o]: (mnot @ (mand @ A @ B))")
-
-//    private[this] def convertConnective(connective: TPTP.THF.Connective): THF.Formula = {
-//      connective match {
-//        case THF.~ => str2Fun("mnot")
-//        case THF.<=> => str2Fun("mequiv")
-//        case THF.Impl => str2Fun("mimplies")
-//        case THF.| => str2Fun("mor")
-//        case THF.& => str2Fun("mand")
-//        // other connectives of TPTP are encoded in terms of the above
-//        case THF.<= => inlineMifDef
-//        case THF.<~> => inlineMniffDef
-//        case THF.~| => inlineMnorDef
-//        case THF.~& => inlineMnandDef
-//        /// Non-classical connectives BEGIN
-//        // Box operator
-//        case THF.NonclassicalBox(index) => index match {
-//          case Some(index0) => mboxIndexed(index0)
-//          case None => str2Fun("mbox")
-//        }
-//        // Diamond operator
-//        case THF.NonclassicalDiamond(index) => index match {
-//          case Some(index0) => mdiaIndexed(index0)
-//          case None => str2Fun("mdia")
-//        }
-//        case THF.NonclassicalLongOperator(name, parameters) =>
-//          name match {
-//            case "$box" | "$necessary" | "$obligatory" | "$knows" | "$believes" => parameters match {
-//              case Seq() => str2Fun("mbox")
-//              case Seq(Left(index0)) => mboxIndexed(index0)
-//              case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
-//            }
-//            case "$dia" | "$possible" | "$permissible" | "$canKnow" | "$canBelieve" => parameters match {
-//              case Seq() => str2Fun("mdia")
-//              case Seq(Left(index0)) => mdiaIndexed(index0)
-//              case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
-//            }
-//            case "$forbidden" => parameters match {
-//              case Seq() =>
-//                val box = str2Fun("mbox")
-//                modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
-//              case Seq(Left(index0)) =>
-//                val box = mboxIndexed(index0)
-//                modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
-//              case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
-//            }
-//            case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
-//          }
-//
-//        /// Non-classical connectives END
-//        // Error cases
-//        case THF.App | THF.Eq | THF.Neq => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
-//        case THF.:= => throw new EmbeddingException(s"Unexpected assignment operator used as connective.")
-//        case THF.== => throw new EmbeddingException(s"Unexpected meta-logical identity operator used as connective.")
-//        case _ => throw new EmbeddingException(s"Unexpected type constructor used as connective: '${connective.pretty}'")
-//      }
-//    }
-
-//    private def convertQuantifier(quantifier: TPTP.THF.Quantifier, typ: TPTP.THF.Type, convertedType: TPTP.THF.Type): THF.Formula = {
-//
-//      val name = quantifier match {
-//        case THF.! =>
-//          try {
-//            domainMap(typ.pretty) match {
-//              case ConstantDomain => if (polymorphic) "mforall_const" else s"mforall_${serializeType(convertedType)}"
-//              case _ => // all three other cases
-//                if (polymorphic) "mforall_vary" else s"mforall_${serializeType(convertedType)}"
-//            }
-//          } catch {
-//            case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
-//          }
-//
-//        case THF.? =>
-//          try {
-//            domainMap(typ.pretty) match {
-//              case ConstantDomain => if (polymorphic) "mexists_const" else s"mexists_${serializeType(convertedType)}"
-//              case _ => // all three other cases
-//                if (polymorphic) "mexists_vary" else s"mexists_${serializeType(convertedType)}"
-//            }
-//          } catch {
-//            case _: NoSuchElementException => throw new EmbeddingException(s"Undefined domain semantics for type '${typ.pretty}'. Maybe a default value was omitted?")
-//          }
-//        case THF.@+ => "mchoice"
-//        case THF.@- => "mdescription"
-//        case _ => throw new EmbeddingException(s"Unexpected quantifier used as term quantifier: '${quantifier.pretty}'")
-//      }
-//      THF.FunctionTerm(name, Seq.empty)
-//    }
-
     @inline private[this] def mbox: THF.Formula = str2Fun("mbox")
-    private[this] def mboxIndexed(index: THF.Formula): THF.Formula = {
-      THF.BinaryFormula(THF.App, mbox, multiModal(index))
-    }
+    private[this] def mboxIndexed(index: THF.Formula): THF.Formula = THF.BinaryFormula(THF.App, mbox, multiModal(index))
     @inline private[this] def mdia: THF.Formula = str2Fun("mdia")
-    private[this] def mdiaIndexed(index: THF.Formula): THF.Formula = {
-      THF.BinaryFormula(THF.App, mdia, multiModal(index))
+    private[this] def mdiaIndexed(index: THF.Formula): THF.Formula = THF.BinaryFormula(THF.App, mdia, multiModal(index))
+
+    @inline private[this] def worldAbstraction(body: THF.Formula, boundVars: Map[String, THF.Type]): THF.Formula =
+      THF.QuantifiedFormula(THF.^, Seq((generateSafeName(boundVars), THF.FunctionTerm(worldTypeName, Seq.empty))), body)
+    @inline private[this] def worldAbstraction(body: THF.Formula, name: String): THF.Formula =
+      THF.QuantifiedFormula(THF.^, Seq((name, THF.FunctionTerm(worldTypeName, Seq.empty))), body)
+
+    private def mkSingleQuantified(quantifier: THF.Quantifier, worldName: String)(variable: THF.TypedVariable, acc: THF.Formula): THF.Formula = {
+      val convertedType = convertVariableType(variable._2)
+      val convertedVariable: THF.TypedVariable = (variable._1, convertedType)
+      quantifierType(convertedType)
+      if (domainMap(variable._2.pretty) == ConstantDomain) THF.QuantifiedFormula(quantifier, Seq(convertedVariable), acc)
+      else {
+        /* with exists-in-world guard */
+        val eiwPredicate = if (polymorphic) "eiw" else s"eiw_${serializeType(convertedType)}"
+        val appliedEiw = THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(eiwPredicate), THF.Variable(variable._1)), THF.Variable(worldName))
+        val convertedBody = quantifier match {
+          case THF.! => THF.BinaryFormula(THF.Impl, appliedEiw, acc)
+          case THF.? => THF.BinaryFormula(THF.&, appliedEiw, acc)
+          case _ => acc
+        }
+        THF.QuantifiedFormula(quantifier, Seq(convertedVariable), convertedBody)
+      }
     }
 
-    @inline private[this] def mglobal: THF.Formula = str2Fun("mglobal")
-    @inline private[this] def mlocal: THF.Formula =  str2Fun("mlocal")
+    private def getRigidityOfSymbol(name: String, typ: THF.Type): Rigidity = {
+      rigidityMap.get(name) match {
+        case Some(value) => value
+        case None =>
+          val goal: TPTP.THF.Type = goalType(typ)
+          goal match { // Special treatment for formulas/predicates: flexible by default
+            case THF.FunctionTerm("$o", Seq()) => Flexible
+            case _ => rigidityMap(name) // use default
+          }
+      }
+    }
+
+    private def getDefaultRigidityOfType(typ: THF.Type): Rigidity = {
+      val goal: TPTP.THF.Type = goalType(typ)
+      goal match { // Special treatment for formulas/predicates variables: flexible
+        case THF.FunctionTerm("$o", Seq()) => Flexible
+        case _ => Rigid // other variables are rigid.
+      }
+    }
+
+    private[this] def generateSafeName(boundVars: Map[String, THF.Type]): String = {
+      var proposedName: String = "W"
+      while (boundVars.contains(proposedName)) {
+        proposedName = proposedName.concat("W")
+      }
+      proposedName
+    }
 
     private def convertTypeFormula(formula: TPTP.THFAnnotated): AnnotatedFormula = {
       formula.formula match {
         case THF.Typing(symbol, typ) =>
           val rigidity = getRigidityOfSymbol(symbol, typ)
           rigidityMap = rigidityMap + (symbol -> rigidity) // add to table in case it was implicit (e.g. a predicate)
-          val convertedType = convertConstantSymbolType(symbol,typ)
+          val convertedType = convertConstantSymbolType(symbol, typ)
           reverseSymbolTypeMap = reverseSymbolTypeMap + (convertedType -> (reverseSymbolTypeMap(convertedType) + symbol))
           val convertedTyping = TPTP.THF.Typing(symbol, convertedType)
           TPTP.THFAnnotated(formula.name, formula.role, convertedTyping, formula.annotations)
@@ -573,6 +377,7 @@ object ModalEmbedding extends Embedding {
       val rigidity = getDefaultRigidityOfType(typ)
       worldTypeLiftBasedOnRigidity(typ, rigidity)
     }
+
     @inline private[this] def worldTypeLiftBasedOnRigidity(typ: THF.Type, rigidity: Rigidity): THF.Type =
       rigidity match {
         case Rigid => typ
@@ -639,9 +444,6 @@ object ModalEmbedding extends Embedding {
         result.appendAll(mglobalTPTPDef())                          // object-level formula
       }
       /////////////////////////////////////////////////////////////
-      // Then: Define connectives
-//      result.appendAll(connectivesTPTPDef())
-      /////////////////////////////////////////////////////////////
       // Then: Define modal operators
       if (isMultiModal) result.appendAll(indexedModalOperatorsTPTPDef())
       else result.appendAll(simpleModalOperatorsTPTPDef())
@@ -674,8 +476,7 @@ object ModalEmbedding extends Embedding {
         }
       }
       /////////////////////////////////////////////////////////////
-      // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary and semantic embedding)
-      // In case of syntactical embedding, we need to have the quantifier symbols defined first.
+      // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary)
       if (polymorphic) {
         if (quantifierTypes.nonEmpty) {
           if (quantifierTypes.exists(ty => domainMap(ty.pretty) != ConstantDomain)) {
@@ -692,6 +493,15 @@ object ModalEmbedding extends Embedding {
                 result.appendAll(polyIndexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw with that type
               if (domainMap(ty.pretty) == DecreasingDomain)
                 result.appendAll(polyIndexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw with that type
+            }
+          } else {
+            // in case of syntactical embedding: write restrictions using CBF resp. BF now.
+            quantifierTypes foreach { ty =>
+              if (domainMap(ty.pretty) == CumulativeDomain) {
+                result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
+              } else if (domainMap(ty.pretty) == DecreasingDomain) {
+                result.appendAll(indexedBarcanFormulaTPTPDef(ty))
+              }
             }
           }
         }
@@ -710,40 +520,12 @@ object ModalEmbedding extends Embedding {
               result.appendAll(indexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw
             else if (domainMap(ty.pretty) == DecreasingDomain)
               result.appendAll(indexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw
-          }
-        }
-      }
-      /////////////////////////////////////////////////////////////
-      // Then: Define quantifiers (TH0/TH1)
-      if (polymorphic) {
-        if (quantifierTypes.nonEmpty) {
-//          if (quantifierTypes.exists(ty => domainMap(ty.pretty) == ConstantDomain))
-//            result.appendAll(polyIndexedConstQuantifierTPTPDef())
-//          if (quantifierTypes.exists(ty => domainMap(ty.pretty) != ConstantDomain))
-//            result.appendAll(polyIndexedVaryQuantifierTPTPDef())
-          if (domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) {
+          } else {
             // in case of syntactical embedding: write restrictions using CBF resp. BF now.
-            quantifierTypes foreach { ty =>
-              if (domainMap(ty.pretty) == CumulativeDomain) {
-                result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
-              } else if (domainMap(ty.pretty) == DecreasingDomain) {
-                result.appendAll(indexedBarcanFormulaTPTPDef(ty))
-              }
-            }
-          }
-        }
-      } else {
-        quantifierTypes foreach { ty =>
-          if (domainMap(ty.pretty) == ConstantDomain) {} // result.appendAll(indexedConstQuantifierTPTPDef(ty))
-          else {
-//            result.appendAll(indexedVaryQuantifierTPTPDef(ty))
-            if (domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) {
-              // in case of syntactical embedding: write restrictions using CBF resp. BF now.
-              if (domainMap(ty.pretty) == CumulativeDomain) {
-                result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
-              } else if (domainMap(ty.pretty) == DecreasingDomain) {
-                result.appendAll(indexedBarcanFormulaTPTPDef(ty))
-              }
+            if (domainMap(ty.pretty) == CumulativeDomain) {
+              result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
+            } else if (domainMap(ty.pretty) == DecreasingDomain) {
+              result.appendAll(indexedBarcanFormulaTPTPDef(ty))
             }
           }
         }
@@ -813,22 +595,6 @@ object ModalEmbedding extends Embedding {
       )
     }
 
-    private[this] def connectivesTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Seq(
-        annotatedTHF(s"thf(mnot_type, type , ( mnot: ($worldTypeName>$$o)>$worldTypeName>$$o) )."),
-        annotatedTHF(s"thf(mand_type, type , ( mand: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
-        annotatedTHF(s"thf(mor_type, type , ( mor: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
-        annotatedTHF(s"thf(mimplies_type, type , ( mimplies: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
-        annotatedTHF(s"thf(mequiv_type, type , ( mequiv: ($worldTypeName>$$o)>($worldTypeName>$$o)>$worldTypeName>$$o) )."),
-        annotatedTHF(s"thf(mnot_def, definition , ( mnot = (^ [A:$worldTypeName>$$o,W:$worldTypeName] : ~(A@W))))."),
-        annotatedTHF(s"thf(mand_def, definition , ( mand = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) & (B@W) ))))."),
-        annotatedTHF(s"thf(mor_def, definition , ( mor = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) | (B@W) ))))."),
-        annotatedTHF(s"thf(mimplies_def, definition , ( mimplies = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) => (B@W) ))))."),
-        annotatedTHF(s"thf(mequiv_def, definition , ( mequiv = (^ [A:$worldTypeName>$$o,B:$worldTypeName>$$o,W:$worldTypeName] : ( (A@W) <=> (B@W) )))).")
-      )
-    }
-
     private[this] def simpleModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
@@ -846,45 +612,6 @@ object ModalEmbedding extends Embedding {
         annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [R:$indexTypeName, Phi:$worldTypeName>$$o,W:$worldTypeName]: ! [V:$worldTypeName]: ( (mrel @ R @ W @ V) => (Phi @ V) ))))."),
         annotatedTHF(s"thf(mdia_type, type, mdia: $indexTypeName > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
         annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [R:$indexTypeName, Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ R @ W @ V) & (Phi @ V) )))).")
-      )
-    }
-
-    private[this] def indexedConstQuantifierTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Seq(
-        annotatedTHF(s"thf(mforall_${serializeType(typ)}_type, type, mforall_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o) > $worldTypeName > $$o)."),
-        annotatedTHF(s"thf(mforall_${serializeType(typ)}_def, definition, mforall_${serializeType(typ)} = ( ^ [A:${typ.pretty}>$worldTypeName>$$o, W:$worldTypeName]: ! [X:${typ.pretty}]: (A @ X @ W)))."),
-        annotatedTHF(s"thf(mexists_${serializeType(typ)}_type, type, mexists_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o) > $worldTypeName > $$o)."),
-        annotatedTHF(s"thf(mexists_${serializeType(typ)}_def, definition, mexists_${serializeType(typ)} = ( ^ [A:${typ.pretty}>$worldTypeName>$$o, W:$worldTypeName]: ? [X:${typ.pretty}]: (A @ X @ W))).")
-      )
-    }
-    private[this] def indexedVaryQuantifierTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Seq(
-        annotatedTHF(s"thf(mforall_${serializeType(typ)}_type, type, mforall_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o) > $worldTypeName > $$o)."),
-        annotatedTHF(s"thf(mforall_${serializeType(typ)}_def, definition, mforall_${serializeType(typ)} = ( ^ [A:${typ.pretty}>$worldTypeName>$$o, W:$worldTypeName]: ! [X:${typ.pretty}]: ((eiw_${serializeType(typ)} @ X @ W) => (A @ X @ W))))."),
-        annotatedTHF(s"thf(mexists_${serializeType(typ)}_type, type, mexists_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o) > $worldTypeName > $$o)."),
-        annotatedTHF(s"thf(mexists_${serializeType(typ)}_def, definition, mexists_${serializeType(typ)} = ( ^ [A:${typ.pretty}>$worldTypeName>$$o, W:$worldTypeName]: ? [X:${typ.pretty}]: ((eiw_${serializeType(typ)} @ X @ W) & (A @ X @ W)))).")
-      )
-    }
-
-    private[this] def polyIndexedVaryQuantifierTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Seq(
-        annotatedTHF(s"thf(mforall_vary_type, type, mforall_vary: !>[T:$$tType]: ((T > $worldTypeName > $$o) > $worldTypeName > $$o))."),
-        annotatedTHF(s"thf(mforall_vary_def, definition, mforall_vary = ( ^ [T:$$tType, A:T>$worldTypeName>$$o, W:$worldTypeName]: ! [X:T]: ((eiw @ T @ X @ W) => (A @ X @ W))))."),
-        annotatedTHF(s"thf(mexists_vary_type, type, mexists_vary: !>[T:$$tType]: ((T > $worldTypeName > $$o) > $worldTypeName > $$o))."),
-        annotatedTHF(s"thf(mexists_vary_def, definition, mexists_vary = ( ^ [T:$$tType, A:T>$worldTypeName>$$o, W:$worldTypeName]: ? [X:T]: ((eiw @ T @ X @ W) & (A @ X @ W)))).")
-      )
-    }
-
-    private[this] def polyIndexedConstQuantifierTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Seq(
-        annotatedTHF(s"thf(mforall_const_type, type, mforall_const: !>[T:$$tType]: ((T > $worldTypeName > $$o) > $worldTypeName > $$o))."),
-        annotatedTHF(s"thf(mforall_const_def, definition, mforall_const = ( ^ [T:$$tType, A:T>$worldTypeName>$$o, W:$worldTypeName]: ! [X:T]: (A @ X @ W)))."),
-        annotatedTHF(s"thf(mexists_const_type, type, mexists_const: !>[T:$$tType]: ((T > $worldTypeName > $$o) > $worldTypeName > $$o))."),
-        annotatedTHF(s"thf(mexists_const_def, definition, mexists_const = ( ^ [T:$$tType, A:T>$worldTypeName>$$o, W:$worldTypeName]: ? [X:T]: (A @ X @ W))).")
       )
     }
 
