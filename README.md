@@ -23,10 +23,10 @@ Currently, the following logics (logic families) are supported:
 | `$alethic_modal`  | Same as `$modal` only that the operators are called `{$necessary}` and `{$possible}` instead (short forms are identical).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `$deontic`        | Same as `$modal` only that the operators are called `{$obligatory}` and `{$permissible}` instead (short forms are identical).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `$alethic_modal`  | Similar to `$modal` only that there is only one operator called `{$knows}` (short forms `[.]`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `$$hybrid`        | Hybrid logics extend the modal logic family $modal with the notion of nominals, a special kind of atomic formula symbol that is true only in a specific world [2]. The logics represented by $$hybrid are first-order variants of H(E, @, ↓). A nominal symbol `n` is represented as `{$$nominal}(n)`, the shift operator @s as `{$$shift(#s)}`, and the bind operator ↓ x as `{$$bind(#X)}`. All other aspects are analogous to the modal logic representation above.                                                                                                                                                                            |
+| `$$hybrid`        | Hybrid logics extend the modal logic family $modal with the notion of nominals, a special kind of atomic formula symbol that is true only in a specific world [2]. The logics represented by $$hybrid are first-order variants of H(E, @, ↓). A nominal symbol `n` is represented as `{$$nominal} @ (n)`, the shift operator @s as `{$$shift(#s)}`, and the bind operator ↓ x as `{$$bind(#X)}`. All other aspects are analogous to the modal logic representation above.                                                                                                                                                                            |
 | `$$pal`           | Public announcement logic (PAL) is a propositional epistemic logic that allows for reasoning about knowledge. In contrast to $modal, PAL is a dynamic logic that supports updating the knowledge of agents via so-called announcement operators. The knowledge operator Ki is given by `{$$knows(#i)}`, the common knowledge operator CA , with A a set of agents, by `{$$common($$group := [...])}`, and the announcement [!ϕ] is represented as `{$$announce($$formula := phi)}`.                                                                                                                                                               |
 | `$$ddl`           | Deontic logics are formalisms for reasoning over norms, obligations, permissions and prohibitions. In contrast to modal logics used for this purpose (e.g., modal logic D), dyadic deontic logics (DDLs), named $$ddl, offer a more sophisticated representation of conditional norms using a dyadic obligation operator O(ϕ/ψ). They address paradoxes of other deontic logics in the context of so-called contrary-to-duty (CTD) situations. The concrete DDLs supported are the propositional system by Carmo and Jones and Åqvist’s propositional system E. The dyadic deontic operator O is represented by `{$$obl}` (short for obligatory). |
-| `$$normative`     | Normative meta form, a semantically underspecified format for expressing deontic logic concepts. Can be translated into standard deontic logic (SDL/modal logics) or DDL (see above) as desired, see [^1] for details. Conditional obligations, permissions, prohibitions and expressied via `{$$obligation}(body, head)`, `{$$permission}(body, head)`, and `{$$prohibition}(body, head)`, respectively. Counts-as norms (constitutional norms) are expressed via `{$$constitutive}(body, head)`. It depends on the target logic how these concepts are compiled into a concrete logical format.                                                 |
+| `$$normative`     | Normative meta form, a semantically underspecified format for expressing deontic logic concepts. Can be translated into standard deontic logic (SDL/modal logics) or DDL (see above) as desired, see [^1] for details. Conditional obligations, permissions, prohibitions and expressied via `{$$obligation} @ (body, head)`, `{$$permission} @ (body, head)`, and `{$$prohibition} @ (body, head)`, respectively. Counts-as norms (constitutional norms) are expressed via `{$$constitutive} @ (body, head)`. It depends on the target logic how these concepts are compiled into a concrete logical format.                                                 |
 
 ### Logic specifications
 Non-classical logic languages quite commonly admit different concrete logics using the same syntax. In order to chose the exact logic intended for the input
@@ -55,7 +55,7 @@ modal logic model is non-cumulative.
      $modalities == [$modal_axiom_K, $modal_axiom_5]
    ] ).
 
-  tff(bf, conjecture, ( ![X]: ({$box}(f(X))) ) => {$box}(![X]: f(X)) ).
+  tff(bf, conjecture, ( ![X]: ({$box} @ (f(X))) ) => {$box} @ (![X]: f(X)) ).
 ```
 
 #### Logic `$$hybrid`
@@ -67,11 +67,11 @@ modal logic model is non-cumulative.
       $modalities == $modal_system_S5
     ] ).
 
-  tff(1, conjecture, ![X]: {$box}({$$shift(#n)}(
-             {$$bind(#Y)}((Y & p(X))
+  tff(1, conjecture, ![X]: ({$box} @ ({$$shift(#n)} @ (
+             {$$bind(#Y)} @ ((Y & p(X))
                           <=>
-                          ({$$nominal}(n) & p(X))
-                     ))) ).
+                          ({$$nominal} @ (n) & p(X))
+                     )))) ).
 ```
 
 #### Logic `$$pal`
@@ -79,7 +79,7 @@ modal logic model is non-cumulative.
 ```
 tff(pal, logic, $$pal == []).
 
-tff(c, conjecture, {$$announce($$formula := p)}( {$$common($$group := [a,b,c,k])}(p) )).
+tff(c, conjecture, {$$announce($$formula := p)} @ ( {$$common($$group := [a,b,c,k])} @ (p) )).
 ```
 
 #### Logic `$$ddl`
@@ -88,11 +88,11 @@ tff(c, conjecture, {$$announce($$formula := p)}( {$$common($$group := [a,b,c,k])
 ```
   tff(spec_e, logic, $$ddl == [ $$system == $$aqvistE ] ).
 
-  tff(a1, axiom, {$$obl}(go,$true)).
-  tff(a2, axiom, {$$obl}(tell, go)).
-  tff(a3, axiom, {$$obl}(~tell, ~go)).
+  tff(a1, axiom, {$$obl} @ (go,$true)).
+  tff(a2, axiom, {$$obl} @ (tell, go)).
+  tff(a3, axiom, {$$obl} @ (~tell, ~go)).
   tff(situation, axiom, ~go). 
-  tff(c, conjecture, {$$obl}(~tell,$true)).
+  tff(c, conjecture, {$$obl} @ (~tell,$true)).
 ```
 This example encodes that (a1) you ought to go and help your neighbor, (a2) if you go then you ought to tell him/her that you are coming,
 and (a3) if you don't go, then you ought not tell him/her. It can consistently be inferred that, if you actually don't go, then you ought not
@@ -173,6 +173,6 @@ The modal logic embedding is an extended and consolidated tool inspired by Tobia
 This version makes use of the `scala-tptp-parser` library from leoprover/scala-tptp-parser that is much faster, in particular for larger input problems.
 
 
-[^1]: A. Steen, D. Fuenmayor. Bridging between LegalRuleML and TPTP for Automated Normative Reasoning. Manuscript submitted to the 6th International Joint Conference on Rules and Reasoning Berlin, 26-28 September 2022
-[^2]: A. Steen. An Extensible Logic Embedding Tool for Lightweight Non-Classical Reasoning. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). Accepted for publication.
-[^3]: A. Steen, D. Fuenmayor, T. Gleißner, G. Sutcliffe and C. Benzmüller. Automated Reasoning in Non-classical Logics in the TPTP World. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). Accepted for publication.
+[^1]: A. Steen, D. Fuenmayor. Bridging between LegalRuleML and TPTP for Automated Normative Reasoning. In: 6th International Joint Conference on Rules and Reasoning Berlin, 26-28 September 2022, Lecture Notes in Computer Science, Vol.13752, pp. 244--260, Springer, 2022. DOI: https://doi.org/10.1007/978-3-031-21541-4_16.
+[^2]: A. Steen. An Extensible Logic Embedding Tool for Lightweight Non-Classical Reasoning. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). CEUR Workshop Proceedings, Vol. 3201, CEUR-WG.org, 2022. Available at https://ceur-ws.org/Vol-3201/paper13.pdf.
+[^3]: A. Steen, D. Fuenmayor, T. Gleißner, G. Sutcliffe and C. Benzmüller. Automated Reasoning in Non-classical Logics in the TPTP World. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). CEUR Workshop Proceedings, Vol. 3201, CEUR-WG.org, 2022. Available at https://ceur-ws.org/Vol-3201/paper11.pdf.
