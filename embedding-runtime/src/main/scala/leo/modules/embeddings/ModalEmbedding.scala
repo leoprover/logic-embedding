@@ -22,7 +22,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.6.2"
+  override final def version: String = "1.6.3"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -412,6 +412,8 @@ object ModalEmbedding extends Embedding {
       modalOperators += index0
       index0
     }
+    private[this] var isS5 = false // True iff mono-modal and modality is S5
+
     private[this] def escapeModalIndex(index: THF.Formula): THF.FunctionTerm = index match {
         case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"#$name", args)
         case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"#$value", Seq.empty)
@@ -480,8 +482,14 @@ object ModalEmbedding extends Embedding {
           }
         }
       } else {
-        val modalSystem = if (modalDefaultExists) modalsMap.default(THF.FunctionTerm("*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
-        val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
+        val modalSystemOrAxiomNameList = if (modalDefaultExists) modalsMap.default(THF.FunctionTerm("*dummy*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
+        val axiomNames = if (isModalSystemName(modalSystemOrAxiomNameList.head)) {
+          val systemName = modalSystemOrAxiomNameList.head
+          if (systemName == "$modal_system_S5") {
+            isS5 = true
+          }
+          modalSystemTable(modalSystemOrAxiomNameList.head)
+        } else modalSystemOrAxiomNameList
         val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) semanticAxiomTable else syntacticAxiomTable
         val modalAxioms = axiomNames.flatMap(axiomTable).toSet
         result.appendAll(modalAxioms)
@@ -493,25 +501,30 @@ object ModalEmbedding extends Embedding {
           if (quantifierTypes.nonEmpty) {
             if (quantifierTypes.exists(ty => domainMap(ty.pretty) != ConstantDomain)) {
               result.appendAll(polyIndexedExistsInWorldTPTPDef()) // define poly eiw
-              quantifierTypes.foreach { ty => // postulate existence for each constant symbol of that type (if any)
-                reverseSymbolTypeMap(ty).foreach { constant =>
-                  result.appendAll(polyIndexedConstantExistsInWorldTPTPDef(ty, constant))
+              quantifierTypes.foreach { ty => // postulate existence for each constant symbol of that type (if any),
+                // or, if S5 and cumul/decreasing, then as universal predicate
+                if (isS5 && (domainMap(ty.pretty) == CumulativeDomain || domainMap(ty.pretty) == DecreasingDomain)) {
+                  result.appendAll(polyIndexedUniversalExistsInWorldTPTPDef(ty))
+                } else {
+                  reverseSymbolTypeMap(ty).foreach { constant =>
+                    result.appendAll(polyIndexedConstantExistsInWorldTPTPDef(ty, constant))
+                  }
                 }
               }
             }
             if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL) {
               quantifierTypes foreach { ty =>
-                if (domainMap(ty.pretty) == CumulativeDomain)
+                if (domainMap(ty.pretty) == CumulativeDomain && !isS5)
                   result.appendAll(polyIndexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw with that type
-                if (domainMap(ty.pretty) == DecreasingDomain)
+                if (domainMap(ty.pretty) == DecreasingDomain && !isS5)
                   result.appendAll(polyIndexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw with that type
               }
             } else {
               // in case of syntactical embedding: write restrictions using CBF resp. BF now.
               quantifierTypes foreach { ty =>
-                if (domainMap(ty.pretty) == CumulativeDomain) {
+                if (domainMap(ty.pretty) == CumulativeDomain && !isS5) {
                   result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
-                } else if (domainMap(ty.pretty) == DecreasingDomain) {
+                } else if (domainMap(ty.pretty) == DecreasingDomain && !isS5) {
                   result.appendAll(indexedBarcanFormulaTPTPDef(ty))
                 }
               }
@@ -521,22 +534,27 @@ object ModalEmbedding extends Embedding {
           quantifierTypes foreach { ty =>
             if (domainMap(ty.pretty) != ConstantDomain) {
               result.appendAll(indexedExistsInWorldTPTPDef(ty)) // define eiw with standard axioms
-              quantifierTypes.foreach { ty => // postulate existence for each constant symbol of that type (if any)
-                reverseSymbolTypeMap(ty).foreach { constant =>
-                  result.appendAll(indexedConstantExistsInWorldTPTPDef(ty, constant))
-                }
+              if (domainMap(ty.pretty) != VaryingDomain && isS5) {
+                // Special case: If cumul or decreasing, and in S5, then it's equivalent to constant domain.
+                // Simulate this by postulating eiw as constant true (simpler to do, implementation wise, than removing eiw completely)
+                result.appendAll(indexedUniversalExistsInWorldTPTPDef(ty))
+              } else {
+                  reverseSymbolTypeMap(ty).foreach { constant => // postulate existence for each constant symbol of that type (if any)
+                    result.appendAll(indexedConstantExistsInWorldTPTPDef(ty, constant))
+                  }
               }
             }
+            // In case of non-S5, add cumul/decreasing axioms
             if (domainEmbeddingType == DOMAINS_EMBEDDING_SEMANTICAL) {
-              if (domainMap(ty.pretty) == CumulativeDomain)
+              if (domainMap(ty.pretty) == CumulativeDomain && !isS5)
                 result.appendAll(indexedCumulativeExistsInWorldTPTPDef(ty)) // define cumul axioms for eiw
-              else if (domainMap(ty.pretty) == DecreasingDomain)
+              else if (domainMap(ty.pretty) == DecreasingDomain && !isS5)
                 result.appendAll(indexedDecreasingExistsInWorldTPTPDef(ty)) // define decreasing axioms for eiw
             } else {
               // in case of syntactical embedding: write restrictions using CBF resp. BF now.
-              if (domainMap(ty.pretty) == CumulativeDomain) {
+              if (domainMap(ty.pretty) == CumulativeDomain && !isS5) {
                 result.appendAll(indexedConverseBarcanFormulaTPTPDef(ty))
-              } else if (domainMap(ty.pretty) == DecreasingDomain) {
+              } else if (domainMap(ty.pretty) == DecreasingDomain && !isS5) {
                 result.appendAll(indexedBarcanFormulaTPTPDef(ty))
               }
             }
@@ -637,6 +655,12 @@ object ModalEmbedding extends Embedding {
         annotatedTHF(s"thf(eiw_${serializeType(typ)}_nonempty, axiom, ![W:$worldTypeName]: ?[X:${typ.pretty}]: (eiw_${serializeType(typ)} @ X @ W) ).")
       )
     }
+    private[this] def indexedUniversalExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF(s"thf(eiw_${serializeType(typ)}_universal, axiom, ![W:$worldTypeName]: ![X:${typ.pretty}]: (eiw_${serializeType(typ)} @ X @ W) ).")
+      )
+    }
     private[this] def indexedConstantExistsInWorldTPTPDef(typ: THF.Type, name: String): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
@@ -683,7 +707,13 @@ object ModalEmbedding extends Embedding {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
         annotatedTHF(s"thf(eiw_type, type, eiw: !>[T:$$tType]: (T > $worldTypeName > $$o))."),
-        annotatedTHF(s"thf(eiw_nonempty, axioms, ![T:$$tType, W:$worldTypeName]: ?[X:T]: (eiw @ T @ X @ W) ).")
+        annotatedTHF(s"thf(eiw_nonempty, axiom, ![T:$$tType, W:$worldTypeName]: ?[X:T]: (eiw @ T @ X @ W) ).")
+      )
+    }
+    private[this] def polyIndexedUniversalExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
+        annotatedTHF(s"thf('eiw_${unescapeTPTPName(name)}_universal', axiom, ! [W:$worldTypeName]: ![X:${typ.pretty}]: (eiw @ ${typ.pretty} @ X @ W) ).")
       )
     }
     private[this] def polyIndexedConstantExistsInWorldTPTPDef(typ: THF.Type, name: String): Seq[TPTP.AnnotatedFormula] = {
