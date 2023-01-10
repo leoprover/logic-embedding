@@ -22,7 +22,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.6.0"
+  override final def version: String = "1.6.1"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -78,6 +78,9 @@ object ModalEmbedding extends Embedding {
     private[this] var domainMap: Map[String, DomainType] = Map.empty
     /* Initialize map */
     domainMap += ("$o" -> ConstantDomain)
+    domainMap += ("$int" -> ConstantDomain)
+    domainMap += ("$rat" -> ConstantDomain)
+    domainMap += ("$real" -> ConstantDomain)
 
     // (3) Modal operator properties, for now as string
     private[this] var modalsMap: Map[THF.Formula, Seq[String]] = Map.empty
