@@ -108,22 +108,17 @@ object ModalEmbedding extends Embedding {
       val convertedTypeFormulas = typeFormulas.map(convertTypeFormula)
       val convertedDefinitionFormulas = definitionFormulas.map(convertDefinitionFormula)
       val convertedOtherFormulas = otherFormulas.map(convertAnnotatedFormula)
-      val generatedMetaFormulas: Seq[AnnotatedFormula] = generateMetaFormulas()
+      val generatedMetaPreFormulas: Seq[AnnotatedFormula] = generateMetaPreFormulas()
+      val generatedMetaPostFormulas: Seq[AnnotatedFormula] = generateMetaPostFormulas()
 
-      // new user types first (sort formulas), then our definitions, then all other formulas
-      val result = sortFormulas ++ generatedMetaFormulas ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
-      // maybe add comments about warnings etc. in comments. If so, add them to very first formula in output.
-      val updatedComments =
-        if (result.isEmpty || warnings.isEmpty) problem.formulaComments
-        else {
-          val firstFormula = result.head
-          val existingCommentsOfFirstFormula = problem.formulaComments.get(firstFormula.name)
-          val newEntry = existingCommentsOfFirstFormula match {
-            case Some(value) => warnings.toSeq.map(TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, _)) ++ value
-            case None => warnings.toSeq.map(TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, _))
-          }
-          problem.formulaComments + (firstFormula.name -> newEntry)
-        }
+      // new user sorts first (new types), then our types, then user symbol declarations, then remaining meta forulas, then all other formulas
+      val result = sortFormulas ++ generatedMetaPreFormulas ++
+        convertedTypeFormulas ++ generatedMetaPostFormulas ++
+        convertedDefinitionFormulas ++ convertedOtherFormulas
+      val extraComments = generateExtraComments(result.headOption,
+        sortFormulas.headOption, generatedMetaPreFormulas.headOption, convertedTypeFormulas.headOption,
+        generatedMetaPostFormulas.headOption, convertedDefinitionFormulas.headOption, convertedOtherFormulas.headOption)
+      val updatedComments = problem.formulaComments.concat(extraComments)
 
       TPTP.Problem(problem.includes, result, updatedComments)
     }
@@ -425,10 +420,11 @@ object ModalEmbedding extends Embedding {
       quantifierTypes += typ
     }
 
-    private def generateMetaFormulas(): Seq[TPTP.AnnotatedFormula] = {
+    /* All the meta formulas that move BEFORE user-type definitions. */
+    private def generateMetaPreFormulas(): Seq[AnnotatedFormula] = {
       import scala.collection.mutable
+      val result: mutable.Buffer[AnnotatedFormula] = mutable.Buffer.empty
 
-      val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
       /////////////////////////////////////////////////////////////
       // First: Introduce world type
       result.append(worldTypeTPTPDef())
@@ -453,9 +449,9 @@ object ModalEmbedding extends Embedding {
         result.appendAll(mlocalTPTPDef())
       }
       if (globalFormulaExists ||
-        modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL ||  // We use mglobal for those meta-definitions
-        domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) {     // so introduce mglobal also if there is no global
-        result.appendAll(mglobalTPTPDef())                          // object-level formula
+        modalityEmbeddingType == MODALITY_EMBEDDING_SYNTACTICAL || // We use mglobal for those meta-definitions
+        domainEmbeddingType == DOMAINS_EMBEDDING_SYNTACTICAL) { // so introduce mglobal also if there is no global
+        result.appendAll(mglobalTPTPDef()) // object-level formula
       }
       /////////////////////////////////////////////////////////////
       // Then: Define modal operators
@@ -494,8 +490,18 @@ object ModalEmbedding extends Embedding {
         val modalAxioms = axiomNames.flatMap(axiomTable).toSet
         result.appendAll(modalAxioms)
       }
+
+      result.toSeq
+    }
+
+    /* All the meta formulas that move AFTER user-type definitions. */
+    private def generateMetaPostFormulas(): Seq[AnnotatedFormula] = {
+      import scala.collection.mutable
+
+      val result: mutable.Buffer[AnnotatedFormula] = mutable.Buffer.empty
+
       /////////////////////////////////////////////////////////////
-      // Then: Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary)
+      // Define exist-in-world-predicates and quantifier restrictions (if cumul/decr/vary)
       try {
         if (polymorphic) {
           if (quantifierTypes.nonEmpty) {
@@ -568,21 +574,103 @@ object ModalEmbedding extends Embedding {
       result.toSeq
     }
 
+    private[this] def generateExtraComments(maybeFirstFormula: Option[AnnotatedFormula],
+                                            maybeSortFormula: Option[AnnotatedFormula],
+                                            maybeMetaPreFormula: Option[AnnotatedFormula],
+                                            maybeTypeFormula: Option[AnnotatedFormula],
+                                            maybeMetaPostFormula: Option[AnnotatedFormula],
+                                            maybeDefinitionFormula: Option[AnnotatedFormula],
+                                            maybeRestFormula: Option[AnnotatedFormula]): Map[String, Seq[TPTP.Comment]] = {
+      var commentMap: Map[String, Seq[TPTP.Comment]] = Map.empty
+
+      // maybe add comments about warnings etc. in comments. If so, add them to very first formula in output.
+      if (warnings.nonEmpty) {
+        maybeFirstFormula match {
+          case Some(formula) => commentMap = commentMap + (formula.name -> warnings.toSeq.map(TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, _)))
+          case None =>
+        }
+      }
+      maybeSortFormula match {
+        case Some(formula) =>
+          val sortBlockComment = Map(formula.name -> Seq(
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% User types %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+          ))
+          commentMap = mergeMaps(commentMap, sortBlockComment)
+        case None =>
+      }
+      maybeMetaPreFormula match {
+        case Some(formula) =>
+          val metaPreBlockComment = Map(formula.name -> Seq(
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Meta-logical definitions of the embedding %%")
+          ))
+          commentMap = mergeMaps(commentMap, metaPreBlockComment)
+        case None =>
+      }
+      maybeTypeFormula match {
+        case Some(formula) =>
+          val typeBlockComment = Map(formula.name -> Seq(
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted user type declarations %%%%%%%%%%%")
+          ))
+          commentMap = mergeMaps(commentMap, typeBlockComment)
+        case None =>
+      }
+      maybeMetaPostFormula match {
+        case Some(formula) =>
+          val metaPostBlockComment = Map(formula.name -> Seq(
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Additional meta-logical definitions %%%%%%%%")
+          ))
+          commentMap = mergeMaps(commentMap, metaPostBlockComment)
+        case None =>
+      }
+      maybeDefinitionFormula match {
+        case Some(formula) =>
+          val definitionBlockComment = Map(formula.name -> Seq(
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted user definitions %%%%%%%%%%%%%%%%%")
+          ))
+          commentMap = mergeMaps(commentMap, definitionBlockComment)
+        case None =>
+      }
+      maybeRestFormula match {
+        case Some(formula) =>
+          val restBlockComment = Map(formula.name -> Seq(
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted problem %%%%%%%%%%%%%%%%%%%%%%%%%%")
+          ))
+          commentMap = mergeMaps(commentMap, restBlockComment)
+        case None =>
+      }
+      commentMap
+    }
+
+    private[this] def mergeMaps[A, B](left: Map[A, Seq[B]], right: Map[A, Seq[B]]): Map[A, Seq[B]] = {
+      var result: Map[A, Seq[B]] = left
+      right.foreach { case (key, values) =>
+        val existingValues = result.getOrElse(key, Seq.empty)
+        result = result + (key -> (existingValues ++ values))
+      }
+      result
+    }
+
     @inline private[this] def worldTypeName: String = "mworld"
     @inline private[this] def indexTypeName: String = "mindex"
 
     private[this] def worldTypeTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF(s"thf($worldTypeName, type, $worldTypeName: $$tType).")
+      annotatedTHF(s"thf(${worldTypeName}_type, type, $worldTypeName: $$tType).")
     }
     private[this] def indexTypeTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF(s"thf($indexTypeName, type, $indexTypeName: $$tType).")
+      annotatedTHF(s"thf(${indexTypeName}_type, type, $indexTypeName: $$tType).")
     }
 
     private[this] def indexTPTPDef(index: THF.FunctionTerm): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      val name = s"${unescapeTPTPName(index.pretty)}_type"
+      val name = s"${unescapeTPTPName(index.pretty)}_decl"
       annotatedTHF(s"thf(${escapeName(name)}, type, ${index.pretty}: $indexTypeName).")
     }
 
@@ -603,18 +691,18 @@ object ModalEmbedding extends Embedding {
 
     private[this] def simpleAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF(s"thf(mrel_type, type, mrel: $worldTypeName > $worldTypeName > $$o).")
+      annotatedTHF(s"thf(mrel_decl, type, mrel: $worldTypeName > $worldTypeName > $$o).")
     }
 
     private[this] def indexedAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTHF
-      annotatedTHF(s"thf(mrel_type, type, mrel: $indexTypeName > $worldTypeName > $worldTypeName > $$o).")
+      annotatedTHF(s"thf(mrel_decl, type, mrel: $indexTypeName > $worldTypeName > $worldTypeName > $$o).")
     }
 
     private[this] def mglobalTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mglobal_type, type, mglobal: ($worldTypeName > $$o) > $$o)."),
+        annotatedTHF(s"thf(mglobal_decl, type, mglobal: ($worldTypeName > $$o) > $$o)."),
         annotatedTHF(s"thf(mglobal_def, definition, mglobal = (^ [Phi: $worldTypeName > $$o]: ![W: $worldTypeName]: (Phi @ W)) ).")
       )
     }
@@ -622,8 +710,8 @@ object ModalEmbedding extends Embedding {
     private[this] def mlocalTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mactual_type, type, mactual: $worldTypeName)."),
-        annotatedTHF(s"thf(mlocal_type, type, mlocal: ($worldTypeName > $$o) > $$o)."),
+        annotatedTHF(s"thf(mactual_decl, type, mactual: $worldTypeName)."),
+        annotatedTHF(s"thf(mlocal_decl, type, mlocal: ($worldTypeName > $$o) > $$o)."),
         annotatedTHF(s"thf(mlocal_def, definition, mlocal = (^ [Phi: $worldTypeName > $$o]: (Phi @ mactual)) ).")
       )
     }
@@ -631,9 +719,9 @@ object ModalEmbedding extends Embedding {
     private[this] def simpleModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mbox_type, type, mbox: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mbox_decl, type, mbox: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
         annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ![V:$worldTypeName]: ( (mrel @ W @ V) => (Phi @ V) ))))."),
-        annotatedTHF(s"thf(mdia_type, type, mdia: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mdia_decl, type, mdia: ($worldTypeName>$$o)>$worldTypeName>$$o )."),
         annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ W @ V) & (Phi @ V) )))).")
       )
     }
@@ -641,9 +729,9 @@ object ModalEmbedding extends Embedding {
     private[this] def indexedModalOperatorsTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(mbox_type, type, mbox: $indexTypeName > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mbox_decl, type, mbox: $indexTypeName > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
         annotatedTHF(s"thf(mbox_def, definition, ( mbox = (^ [R:$indexTypeName, Phi:$worldTypeName>$$o,W:$worldTypeName]: ! [V:$worldTypeName]: ( (mrel @ R @ W @ V) => (Phi @ V) ))))."),
-        annotatedTHF(s"thf(mdia_type, type, mdia: $indexTypeName > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
+        annotatedTHF(s"thf(mdia_decl, type, mdia: $indexTypeName > ($worldTypeName>$$o)>$worldTypeName>$$o )."),
         annotatedTHF(s"thf(mdia_def, definition, ( mdia = (^ [R:$indexTypeName, Phi:$worldTypeName>$$o, W:$worldTypeName]: ?[V:$worldTypeName]: ( (mrel @ R @ W @ V) & (Phi @ V) )))).")
       )
     }
@@ -651,7 +739,7 @@ object ModalEmbedding extends Embedding {
     private[this] def indexedExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(eiw_${serializeType(typ)}_type, type, eiw_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(eiw_${serializeType(typ)}_decl, type, eiw_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o))."),
         annotatedTHF(s"thf(eiw_${serializeType(typ)}_nonempty, axiom, ![W:$worldTypeName]: ?[X:${typ.pretty}]: (eiw_${serializeType(typ)} @ X @ W) ).")
       )
     }
@@ -706,7 +794,7 @@ object ModalEmbedding extends Embedding {
     private[this] def polyIndexedExistsInWorldTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(eiw_type, type, eiw: !>[T:$$tType]: (T > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(eiw_decl, type, eiw: !>[T:$$tType]: (T > $worldTypeName > $$o))."),
         annotatedTHF(s"thf(eiw_nonempty, axiom, ![T:$$tType, W:$worldTypeName]: ?[X:T]: (eiw @ T @ X @ W) ).")
       )
     }
