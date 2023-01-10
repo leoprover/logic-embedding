@@ -22,7 +22,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "1.6.1"
+  override final def version: String = "1.6.2"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -998,8 +998,7 @@ object ModalEmbedding extends Embedding {
       "$modal_system_T" -> Seq("$modal_axiom_K", "$modal_axiom_T"),
       "$modal_system_B" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_B"),
       "$modal_system_S4" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4"),
-      "$modal_system_S5" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_5"),
-      "$modal_system_S5U" -> Seq("$modal_axiom_S5U"),
+      "$modal_system_S5" -> Seq("$modal_axiom_K", "$modal_axiom_S5U"),
       "$modal_system_K4W" -> Seq("$modal_axiom_K", "$modal_axiom_GL"),
       "$modal_system_4_1" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_H"),
       "$modal_system_4_2" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_M"),
