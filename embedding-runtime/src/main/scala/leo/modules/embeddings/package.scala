@@ -38,6 +38,22 @@ package object embeddings {
 
   @inline final def str2Fun(functionName: String): TPTP.THF.Formula = TPTP.THF.FunctionTerm(functionName, Seq.empty)
 
+  final def unescapeTPTPName(name: String): String = {
+    if (name.startsWith("'") && name.endsWith("'")) {
+      name.tail.init
+    } else name
+  }
+
+  final def escapeName(name: String): String = {
+    val integerRegex = "^[+-]?[\\d]+$"
+    if (name.matches(integerRegex)) name else escapeAtomicWord(name)
+  }
+  final def escapeAtomicWord(word: String): String = {
+    val simpleLowerWordRegex = "^[a-z][a-zA-Z\\d_]*$"
+    if (word.matches(simpleLowerWordRegex)) word
+    else s"'${word.replace("\\", "\\\\").replace("'", "\\'")}'"
+  }
+
   final def encodeDollarName(str: String): String = str.replaceAll("\\$", "d")
   final def serializeType(typ: TPTP.THF.Type): String = {
     import TPTP.THF._
