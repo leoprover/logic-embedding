@@ -113,14 +113,15 @@ object DHOLEmbedding extends Embedding {
           }
           val convertedBody = convertFormula(body)
 
-          def relativizeVar(v: (String, THF.Type), body: THF.Formula) = v match {
-            case (str, tp) => THF.BinaryFormula(THF.Impl, typePred(tp, THF.Variable(str)), body)
+          def relativizeVar(connective: THF.BinaryConnective)(v: (String, THF.Type), body: THF.Formula) = v match {
+            case (str, tp) =>
+              THF.BinaryFormula(connective, typePred(tp, THF.Variable(str)), body)
           }
 
-          lazy val relativizedBody = variableList.foldRight(convertedBody)(relativizeVar)
+          def relativizedBody(connective: THF.BinaryConnective) = variableList.foldRight(convertedBody)(relativizeVar(connective))
           quantifier match {
-            case THF.! => THF.QuantifiedFormula(THF.!, convertedVariableList, relativizedBody)
-            case THF.? => THF.QuantifiedFormula(THF.?, convertedVariableList, relativizedBody)
+            case THF.! => THF.QuantifiedFormula(THF.!, convertedVariableList, relativizedBody(THF.Impl))
+            case THF.? => THF.QuantifiedFormula(THF.?, convertedVariableList, relativizedBody(THF.&))
             case _ => THF.QuantifiedFormula(quantifier, convertedVariableList, convertedBody)
           }
 
