@@ -95,12 +95,44 @@ object DHOLEmbedding extends Embedding {
     }
 
     private[this] def inferType(formula: TPTP.THF.Formula)(implicit variables: List[(String, TPTP.THF.Type)]): TPTP.THF.Formula = {
+      def THFApply(func: THF.Formula, args: List[THF.Formula]): THF.Formula = {
+        func match {
+          case THF.FunctionTerm(f, fargs) => THF.FunctionTerm(f, fargs++args)
+          case _ =>
+            args match {
+              case Nil => func
+              case List(arg) => THF.BinaryFormula(THF.App, func, arg)
+              case hd::tl => THF.BinaryFormula(THF.App, func, THFApply(hd, tl))
+            }
+        }
+      }
+      def substitute(body: THF.Formula)(implicit variableList: Seq[(String, THF.Type)], replArgs: Seq[THF.Formula]): THF.Formula = {
+        val varargs = variableList.take(replArgs.length).zip(replArgs)
+        def substituteAtomic(name: String, default: THF.Formula) = {
+          varargs.find(_._1._1 == name).map(_._2).getOrElse(default)
+        }
+        body match {
+          case v@THF.Variable(name) => substituteAtomic(name, v)
+          case FunctionTerm(f, args) =>
+            THFApply(substituteAtomic(f, FunctionTerm(f, Nil)), args.map(substitute).toList)
+          case THF.QuantifiedFormula(quantifier, variableList, body) => THF.QuantifiedFormula(quantifier, variableList, substitute(body))
+          case THF.UnaryFormula(connective, body) => THF.UnaryFormula(connective, substitute(body))
+          case THF.BinaryFormula(connective, left, right) => THF.BinaryFormula(connective, substitute(left), substitute(right))
+          case THF.Tuple(elements) => THF.Tuple(elements.map(substitute))
+          case THF.ConditionalTerm(condition, thn, els) => THF.ConditionalTerm(substitute(condition), substitute(thn), substitute(els))
+          case default => default
+        }
+      }
+
       @tailrec
       def applyNTp(tp: THF.Formula, args: Seq[THF.Formula]): THF.Formula = tp match {
         case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) if args.length == 1 => codomain
         case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) => applyNTp(codomain, args.tail)
         case THF.QuantifiedFormula(THF.!>, variableList, body) =>
-          THF.QuantifiedFormula(THF.!>, variableList.drop(args.length), body)
+          val substBody = substitute(body)(variableList, args)
+          if (variableList.length == args.length) { substBody } else {
+            THF.QuantifiedFormula(THF.!>, variableList.drop(args.length), substBody)
+          }
       }
       def lookupAtomic(name: String) = (constants++variables).find(_._1 == name)
         .getOrElse(throw new EmbeddingException(s"Failed to look up variable or constant: "+name))._2
@@ -140,6 +172,7 @@ object DHOLEmbedding extends Embedding {
         val convertedLeft: TPTP.THF.Formula = convertFormula(left)
         val convertedRight: TPTP.THF.Formula = convertFormula(right)
         val leftTp = inferType(left)(variables)
+        val rightTp = inferType(right)(variables)
         val functionType: (Boolean, Option[(Seq[(String, THF.Formula)], THF.Formula)]) = leftTp match {
           case THF.BinaryFormula(THF.FunTyConstructor, domain, codomain) => (true, Some((Seq(("aTp", domain)), codomain)))
           case THF.QuantifiedFormula(quantifier, variableList, body) => quantifier match {
@@ -150,7 +183,7 @@ object DHOLEmbedding extends Embedding {
         }
         def relativizeEqFirstOrder(equality: THF.Formula) = {
           THF.BinaryFormula(THF.&, typePred(leftTp, convertedLeft),
-            THF.BinaryFormula(THF.&, typePred(leftTp, convertedRight), equality))
+            THF.BinaryFormula(THF.&, typePred(rightTp, convertedRight), equality))
         }
         def relativizeHigherOrderEq(conn: THF.BinaryConnective) = {
           val (argSeq, _) = functionType._2.get
@@ -192,7 +225,7 @@ object DHOLEmbedding extends Embedding {
           val convertedVariableList = variableList map {
             case (str, tp) => (str, convertType(tp))
           }
-          val convertedBody = convertFormula(body)(convertedVariableList.toList++variables)
+          val convertedBody = convertFormula(body)(variableList.toList++variables)
 
           def relativizeVar(connective: THF.BinaryConnective)(v: (String, THF.Type), body: THF.Formula) = v match {
             case (str, tp) =>
@@ -245,7 +278,7 @@ object DHOLEmbedding extends Embedding {
             // This is a term declaration
             case _ =>
               declType = convertedType
-              constants ::= (symbol, declType)
+              constants ::= (symbol, typ)
               TPTP.THFAnnotated(axName(symbol), "axiom",
                 THF.Logical(typePred(typ,atomicTerm(symbol))), annotations)
           }
