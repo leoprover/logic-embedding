@@ -106,22 +106,23 @@ object DHOLEmbedding extends Embedding {
             }
         }
       }
-      def substitute(body: THF.Formula)(implicit variableList: Seq[(String, THF.Type)], replArgs: Seq[THF.Formula]): THF.Formula = {
+      def substituteVars(body: THF.Formula)(implicit variableList: Seq[(String, THF.Type)], replArgs: Seq[THF.Formula]): THF.Formula = {
         val varargs = variableList.take(replArgs.length).zip(replArgs)
         def substituteAtomic(name: String, default: THF.Formula) = {
           varargs.find(_._1._1 == name).map(_._2).getOrElse(default)
         }
-        body match {
+        def substituteSubterm(tm: THF.Formula): THF.Formula = tm match {
           case v@THF.Variable(name) => substituteAtomic(name, v)
           case FunctionTerm(f, args) =>
-            THFApply(substituteAtomic(f, FunctionTerm(f, Nil)), args.map(substitute).toList)
-          case THF.QuantifiedFormula(quantifier, variableList, body) => THF.QuantifiedFormula(quantifier, variableList, substitute(body))
-          case THF.UnaryFormula(connective, body) => THF.UnaryFormula(connective, substitute(body))
-          case THF.BinaryFormula(connective, left, right) => THF.BinaryFormula(connective, substitute(left), substitute(right))
-          case THF.Tuple(elements) => THF.Tuple(elements.map(substitute))
-          case THF.ConditionalTerm(condition, thn, els) => THF.ConditionalTerm(substitute(condition), substitute(thn), substitute(els))
+            THFApply(substituteAtomic(f, FunctionTerm(f, Nil)), args.map(substituteSubterm).toList)
+          case THF.QuantifiedFormula(quantifier, variableList, body) => THF.QuantifiedFormula(quantifier, variableList, substituteSubterm(body))
+          case THF.UnaryFormula(connective, body) => THF.UnaryFormula(connective, substituteSubterm(body))
+          case THF.BinaryFormula(connective, left, right) => THF.BinaryFormula(connective, substituteSubterm(left), substituteSubterm(right))
+          case THF.Tuple(elements) => THF.Tuple(elements.map(substituteSubterm))
+          case THF.ConditionalTerm(condition, thn, els) => THF.ConditionalTerm(substituteSubterm(condition), substituteSubterm(thn), substituteSubterm(els))
           case default => default
         }
+        substituteSubterm(body)
       }
 
       @tailrec
@@ -129,7 +130,8 @@ object DHOLEmbedding extends Embedding {
         case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) if args.length == 1 => codomain
         case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) => applyNTp(codomain, args.tail)
         case THF.QuantifiedFormula(THF.!>, variableList, body) =>
-          val substBody = substitute(body)(variableList, args)
+          val substBody = substituteVars(body)(variableList, args)
+          println(substBody.pretty)
           if (variableList.length == args.length) { substBody } else {
             THF.QuantifiedFormula(THF.!>, variableList.drop(args.length), substBody)
           }
@@ -279,8 +281,8 @@ object DHOLEmbedding extends Embedding {
             case _ =>
               declType = convertedType
               constants ::= (symbol, typ)
-              TPTP.THFAnnotated(axName(symbol), "axiom",
-                THF.Logical(typePred(typ,atomicTerm(symbol))), annotations)
+              val tpPred = typePred(typ,atomicTerm(symbol))
+              TPTP.THFAnnotated(axName(symbol), "axiom", THF.Logical(tpPred), annotations)
           }
           val convertedTyping = TPTP.THF.Typing(symbol, declType)
           val convertedFormula = TPTP.THFAnnotated(name, "type", convertedTyping, annotations)
@@ -303,7 +305,7 @@ object DHOLEmbedding extends Embedding {
           case (x,tp)::variableList =>
             val convertedTp = convertType(tp)
             val simplifiedRes = tm match {
-              case THF.FunctionTerm(s, args) => THF.FunctionTerm(s, args.+:(THF.Variable(x)))
+              case THF.FunctionTerm(s, args) => THF.FunctionTerm(s, args.:+(THF.Variable(x)))
               case _ => THF.BinaryFormula(THF.App, tm, THF.Variable(x))
             }
             val bodyTp = THF.QuantifiedFormula(THF.!>, variableList, body)
