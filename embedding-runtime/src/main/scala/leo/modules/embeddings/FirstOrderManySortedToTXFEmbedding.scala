@@ -16,7 +16,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
   override final val name: String = "$$fomlModel"
   override final val version: String = "1.0"
 
-  override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  { ??? }
+  override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
+    TFFAnnotated("spec", "logic", TFF.Logical(TFF.AtomicFormula(`name`, Seq.empty)), None)
 
   override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
     new FirstOrderManySortedToTXFEmbeddingImpl(problem).apply()
@@ -43,20 +44,30 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
       TPTP.Problem(problem.includes, result, Map.empty)
     }
 
-    @inline private[this] val worldTypeName: String = "mworld"
+    @inline private[this] val worldTypeName: String = "'$ki_world'"
     @inline private[this] def worldType: TFF.Type = TFF.AtomicType(worldTypeName, Seq.empty)
-    @inline private[this] val accessibilityRelationName: String = "mrel"
-    @inline private[this] val localWorldName: String = "cw"
+    @inline private[this] val accessibilityRelationName: String = "'$ki_accessible'"
+    @inline private[this] val localWorldName: String = "'$ki_local_world'"
     @inline private[this] def localWorldVariableName: String = localWorldName.toUpperCase
     @inline private[this] def localWorldConstant: TFF.Term = TFF.AtomicTerm(localWorldName, Seq.empty)
     @inline private[this] def localWorldVariable: TFF.Term = TFF.Variable(localWorldVariableName)
-    @inline private[this] val indexTypeName: String = "mindex"
+    @inline private[this] val indexTypeName: String = "'$ki_index'"
     @inline private[this] def indexType: TFF.Type = TFF.AtomicType(indexTypeName, Seq.empty)
-
+    @inline private[this] val existencePredicateName: String = "'$ki_exists_in_world'"
+    @inline private[this] def existencePredicateNameForType(ty: String): String = s"'${unescapeTPTPName(existencePredicateName)}_$ty'"
     private[this] val indexValues: collection.mutable.Set[TFF.Term] = collection.mutable.Set.empty
     private def multimodal(idx: TFF.Term): Unit = {
       indexValues.addOne(idx)
     }
+    private[this] val quantifierTypes: collection.mutable.Set[String] = collection.mutable.Set.empty
+    private def existencePredicate(typ: TFF.Type, worldPlaceholder: TFF.Term, variableName: String): TFF.Formula = {
+      val typName = typ match {
+        case TFF.AtomicType(name, _) => quantifierTypes.addOne(name); name
+        case _ => throw new EmbeddingException(s"Illegal quantification over non-atomic type '${typ.pretty}'.")
+      }
+      TFF.AtomicFormula(existencePredicateNameForType(typName), Seq(worldPlaceholder, TFF.Variable(variableName)))
+    }
+
     private def isMultiModal: Boolean = { indexValues.nonEmpty }
 
     private[this] def argumentTypesAndGoalTypeOfType(ty: TFF.Type): (Seq[TFF.Type], TFF.Type) = ty match {
@@ -82,9 +93,12 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
       input.formula match {
         case TFF.Logical(formula) =>
           var globalFormula = false
+          var interpretationFormula = false
           val worldPlaceholder = input.role match {
             case "hypothesis" | "conjecture" => // assumed to be local
               localWorldConstant
+            case "interpretation" => // no grounding, just use localWorldConstant as dummy
+              interpretationFormula = true; localWorldConstant
             case _ if isSimpleRole(input.role) => // everything else is assumed to be global
               globalFormula = true; localWorldVariable
             case _ => // role with subroles, check whether a subrole specified $local or $global explicitly
@@ -102,7 +116,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
             case "hypothesis" => "axiom"
             case r => r
           }
-          val convertedFormula0: TFF.Formula = if (globalFormula) convertFormula(formula, worldPlaceholder, Set(localWorldName)) else convertFormula(formula, worldPlaceholder)
+          val convertedFormula0: TFF.Formula = if (globalFormula) convertFormula(formula, worldPlaceholder, Set(localWorldName)) else if (interpretationFormula) convertInterpretationFormula(formula) else convertFormula(formula, worldPlaceholder)
           // Ground, if necessary, with "global" quantification
           val convertedFormula: TFF.Formula = if (globalFormula) TFF.QuantifiedFormula(TFF.!, Seq((localWorldVariableName, Some(worldType))), convertedFormula0)
                                  else convertedFormula0
@@ -111,25 +125,64 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
       }
     }
 
+    private[this] def convertInterpretationFormula(formula: TFF.Formula): TFF.Formula = {
+      formula match {
+        case TFF.AtomicFormula("$accessible_ki_world", Seq(w, v)) => TFF.AtomicFormula(accessibilityRelationName, Seq(w, v))
+        case TFF.AtomicFormula("$in_ki_world", Seq(world, TFF.FormulaTerm(worldFormula))) =>
+          convertFormula(worldFormula, worldPlaceholder = world)
+        case TFF.Equality(left, right) => TFF.Equality(convertInterpretationTerm(left),convertInterpretationTerm(right))
+        case TFF.Inequality(left, right) => TFF.Inequality(convertInterpretationTerm(left),convertInterpretationTerm(right))
+
+        case TFF.QuantifiedFormula(quantifier, variableList, body) => TFF.QuantifiedFormula(quantifier, variableList, convertInterpretationFormula(body))
+        case TFF.UnaryFormula(connective, body) => TFF.UnaryFormula(connective, convertInterpretationFormula(body))
+        case TFF.BinaryFormula(connective, left, right) => TFF.BinaryFormula(connective, convertInterpretationFormula(left), convertInterpretationFormula(right))
+        case _ => formula
+      }
+    }
+    private[this] def convertInterpretationTerm(term: TFF.Term): TFF.Term = {
+      term match {
+        case TFF.AtomicTerm("$local_ki_world", Seq()) => localWorldConstant
+        case TFF.FormulaTerm(formula) => TFF.FormulaTerm(convertInterpretationFormula(formula))
+        case _ => term
+      }
+    }
+
     private[this] def convertFormula(formula: TFF.Formula, worldPlaceholder: TFF.Term): TFF.Formula =
       convertFormula(formula, worldPlaceholder, Set.empty)
     private[this] def convertFormula(formula: TFF.Formula, worldPlaceholder: TFF.Term, boundVars: Set[String]): TFF.Formula = {
       formula match {
-        case TFF.AtomicFormula(f, args) => TFF.AtomicFormula(f, worldPlaceholder +: args)
+        /* special cases */
+//        case TFF.AtomicFormula("$accessible_ki_world", Seq(w,v)) => TFF.AtomicFormula(accessibilityRelationName, Seq(w, v))
+//        case TFF.AtomicFormula("$in_ki_world", Seq(world, TFF.FormulaTerm(worldFormula))) =>
+//          convertFormula(worldFormula, worldPlaceholder =  world, boundVars)
+        /* special cases END */
+        case TFF.AtomicFormula(f, args) => if (f.startsWith("$") || f.startsWith("$$")) formula else TFF.AtomicFormula(f, worldPlaceholder +: args)
         case TFF.UnaryFormula(connective, body) => TFF.UnaryFormula(connective, convertFormula(body, worldPlaceholder, boundVars))
         case TFF.BinaryFormula(connective, left, right) => TFF.BinaryFormula(connective,
                                                                              convertFormula(left, worldPlaceholder, boundVars),
                                                                              convertFormula(right, worldPlaceholder, boundVars))
-        case TFF.Equality(_, _) | TFF.Inequality(_, _) => formula
+        case TFF.Equality(left,right) => TFF.Equality(convertTerm(left, worldPlaceholder, boundVars), convertTerm(right, worldPlaceholder, boundVars))
+        case TFF.Inequality(left, right) => TFF.Inequality(convertTerm(left, worldPlaceholder, boundVars), convertTerm(right, worldPlaceholder, boundVars))
         case TFF.ConditionalFormula(condition, thn, els) => TFF.ConditionalFormula(convertFormula(condition, worldPlaceholder, boundVars),
                                                                                    convertTerm(thn, worldPlaceholder, boundVars),
                                                                                    convertTerm(els, worldPlaceholder, boundVars))
         case TFF.LetFormula(typing, binding, body) => TFF.LetFormula(typing,
                                                                      binding.map { case (l,r) => (l, convertTerm(r, worldPlaceholder, boundVars))},
                                                                      convertTerm(body, worldPlaceholder, boundVars))
-        // TODO: Domain semantics?
-        case TFF.QuantifiedFormula(quantifier, variableList, body) => TFF.QuantifiedFormula(quantifier, variableList,
-                                                                              convertFormula(body, worldPlaceholder, boundVars))
+        case TFF.QuantifiedFormula(quantifier, variableList, body) =>
+          val convertedBody0 = convertFormula(body, worldPlaceholder, boundVars)
+          val existenceGuards: Seq[TFF.Formula] = variableList.map { case (varName, maybeType) =>
+            maybeType match {
+              case Some(ty) => existencePredicate(ty, worldPlaceholder, varName)
+              case None => existencePredicate(TFF.AtomicType("$i", Seq.empty), worldPlaceholder, varName)
+            }
+          }
+          val conjunctionOfGuards: TFF.Formula = existenceGuards.reduce(TFF.BinaryFormula(TFF.&, _, _))
+          val convertedBody: TFF.Formula = quantifier match {
+            case TFF.! => TFF.BinaryFormula(TFF.Impl, conjunctionOfGuards, convertedBody0)
+            case TFF.? => TFF.BinaryFormula(TFF.&, conjunctionOfGuards, convertedBody0)
+          }
+          TFF.QuantifiedFormula(quantifier, variableList, convertedBody)
         case TFF.NonclassicalPolyaryFormula(connective, args) => args match {
           case Seq(body) => connective match {
             case TFF.NonclassicalLongOperator(name, parameters) if Seq("$box", "$necessary").contains(name) =>
@@ -204,6 +257,9 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
 
     private[this] def convertTerm(term: TFF.Term, worldPlaceholder: TFF.Term, boundVars: Set[String]): TFF.Term = {
       term match {
+        /* special cases */
+        case TFF.AtomicTerm("$local_ki_world", Seq()) => localWorldConstant
+        /* special cases END */
         case TFF.FormulaTerm(formula) => TFF.FormulaTerm(convertFormula(formula, worldPlaceholder, boundVars))
         case _ => term
       }
@@ -213,8 +269,9 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
       import scala.collection.mutable
 
       val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
-      // Introduce world type
+      // Introduce world type and current world
       result.append(worldTypeTPTPDef())
+      result.append(localWorldTPTPDef())
       // Introduce type of index values and index typings (if applicable)
       if (isMultiModal) {
         result.append(multiModalAccessbilityRelationTPTPDef())
@@ -230,24 +287,34 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
     }
 
     private[this] def worldTypeTPTPDef(): TPTP.AnnotatedFormula = {
-      annotatedTFF(s"tff(${worldTypeName}_type, type, $worldTypeName: $$tType).")
+      val name = s"${unescapeTPTPName(worldTypeName)}_type"
+      println(s"tff(${escapeName(name)}, type, $worldTypeName: $$tType).")
+      annotatedTFF(s"tff(${escapeName(name)}, type, $worldTypeName: $$tType).")
+    }
+
+    private[this] def localWorldTPTPDef(): TPTP.AnnotatedFormula = {
+      val name = s"${unescapeTPTPName(localWorldName)}_decl"
+      annotatedTFF(s"tff(${escapeName(name)}, type, $localWorldName: $worldTypeName).")
     }
 
     private[this] def accessbilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
-      annotatedTFF(s"tff(${accessibilityRelationName}_decl, type, $accessibilityRelationName: ($worldTypeName * $worldTypeName) > $$o).")
+      val name = unescapeTPTPName(accessibilityRelationName) + "_decl"
+      annotatedTFF(s"tff(${escapeName(name)}, type, $accessibilityRelationName: ($worldTypeName * $worldTypeName) > $$o).")
     }
 
     private[this] def indexTypeTPTPDef(): TPTP.AnnotatedFormula = {
-      annotatedTFF(s"tff(${indexTypeName}_type, type, $indexTypeName: $$tType).")
+      val name = unescapeTPTPName(indexTypeName) + "_type"
+      annotatedTFF(s"tff(${escapeName(name)}, type, $indexTypeName: $$tType).")
     }
 
     private[this] def indexTPTPDef(term: TFF.Term): TPTP.AnnotatedFormula = {
       val name = s"${unescapeTPTPName(term.pretty)}_decl"
-      annotatedTFF(s"tff($name, type, ${term.pretty}: $indexTypeName).")
+      annotatedTFF(s"tff(${escapeName(name)}, type, ${term.pretty}: $indexTypeName).")
     }
 
     private[this] def multiModalAccessbilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
-      annotatedTFF(s"tff(${accessibilityRelationName}_decl, type, $accessibilityRelationName: ($indexTypeName * $worldTypeName * $worldTypeName) > $$o).")
+      val name = s"${unescapeTPTPName(accessibilityRelationName)}_decl"
+      annotatedTFF(s"tff(${escapeName(name)}, type, $accessibilityRelationName: ($indexTypeName * $worldTypeName * $worldTypeName) > $$o).")
     }
 
     private[this] def createState(spec: TFFAnnotated): Unit = {
