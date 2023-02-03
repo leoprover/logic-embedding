@@ -31,7 +31,9 @@ package object embeddings {
     import leo.datastructures.TPTP.{THF,TFF}
     formula match {
       case TPTP.THFAnnotated(_, "logic", THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(logic, Seq()), _)), _) => logic
+      case TPTP.THFAnnotated(_, "logic", THF.Logical(THF.FunctionTerm(logic, Seq())), _) => logic
       case TPTP.TFFAnnotated(_, "logic", TFF.Logical(TFF.MetaIdentity(TFF.AtomicTerm(logic, Seq()), _)), _) => logic
+      case TPTP.TFFAnnotated(_, "logic", TFF.Logical(TFF.AtomicFormula(logic, Seq())), _) => logic
       case _ => throw new MalformedLogicSpecificationException(formula)
     }
   }
