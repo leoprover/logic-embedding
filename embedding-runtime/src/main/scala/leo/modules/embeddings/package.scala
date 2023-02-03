@@ -2,7 +2,7 @@ package leo
 package modules
 
 import leo.datastructures.TPTP
-import leo.datastructures.TPTP.AnnotatedFormula
+import leo.datastructures.TPTP.{AnnotatedFormula, TFF, TFFAnnotated, THF}
 
 import java.util.logging.Logger
 
@@ -10,7 +10,18 @@ import java.util.logging.Logger
 package object embeddings {
   final class EmbeddingException(message: String) extends RuntimeException(message)
   final class MalformedLogicSpecificationException(val spec: TPTP.AnnotatedFormula) extends RuntimeException
-  final class UnspecifiedLogicException extends RuntimeException
+
+
+  final val tptpDefinedNullaryPredicateSymbols: Seq[String] = Seq("$true", "$false")
+  final val tptpDefinedUnaryArithmeticPredicateSymbols: Seq[String] = Seq("$is_int", "$is_rat")
+  final val tptpDefinedBinaryArithmeticPredicateSymbols: Seq[String] = Seq("$less", "$lesseq", "$greater", "$greatereq")
+  final val tptpDefinedPredicateSymbols: Seq[String] = tptpDefinedNullaryPredicateSymbols ++ tptpDefinedUnaryArithmeticPredicateSymbols ++ tptpDefinedBinaryArithmeticPredicateSymbols
+
+  final val tptpDefinedUnaryArithmeticFunctionSymbols: Seq[String] = Seq("$uminus", "$floor", "$ceiling", "$truncate", "$round",
+  "$is_int", "$is_rat", "$to_int", "$to_rat", "$to_real")
+
+  final val tptpDefinedBinaryArithmeticFunctionSymbols: Seq[String] = Seq("$difference", "$sum", "$product", "$quotient",
+    "$quotient_e", "$quotient_t", "$quotient_f", "$remainder_e", "$remainder_t", "$remainder_f")
 
   final def getLogicSpecFromProblem(formulas: Seq[TPTP.AnnotatedFormula]): Option[TPTP.AnnotatedFormula] = {
     formulas.find(f => f.role == "logic")
@@ -42,6 +53,116 @@ package object embeddings {
       case BinaryFormula(ProductTyConstructor, left, right) =>
         s"prod_l__${serializeType(left)}_${serializeType(right)}__r_"
       case _ => throw new IllegalArgumentException()
+    }
+
+  }
+
+  type LogicSpec = AnnotatedFormula
+  type SortDecl = AnnotatedFormula
+  type TypeDecl = AnnotatedFormula
+  type DefDecl = AnnotatedFormula
+  type RemainingFormulas = AnnotatedFormula
+  protected[embeddings] final def splitInputByDifferentKindOfFormulas(input: Seq[AnnotatedFormula]):
+  (LogicSpec, Seq[SortDecl], Seq[TypeDecl], Seq[DefDecl], Seq[RemainingFormulas]) = {
+    import collection.mutable
+    val logicSpec: mutable.Buffer[LogicSpec] = mutable.Buffer.empty
+    val sortDecls: mutable.Buffer[SortDecl] = mutable.Buffer.empty
+    val typeDecls: mutable.Buffer[TypeDecl] = mutable.Buffer.empty
+    val defDecls: mutable.Buffer[DefDecl] = mutable.Buffer.empty
+    val remainingFormulas: mutable.Buffer[RemainingFormulas] = mutable.Buffer.empty
+
+    input.foreach { f =>
+      f.role match {
+        case "logic" => logicSpec.append(f)
+        case "type" => f match {
+          case TPTP.THFAnnotated(_, _, formula, _) => formula match {
+            case THF.Typing(_, typ) => typ match {
+              case THF.FunctionTerm("$tType", Seq()) => sortDecls.append(f)
+              case _ => typeDecls.append(f)
+            }
+            case _ => throw new EmbeddingException(s"Malformed type definition in formula '${f.name}', aborting.")
+          }
+          case _ => throw new EmbeddingException(s"Only embedding of THF files supported. Aborting")
+        }
+        case "definition" => defDecls.append(f)
+        case _ => remainingFormulas.append(f)
+      }
+    }
+
+    if (logicSpec.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")
+    else {
+      val spec = if (logicSpec.size > 1) {
+        Logger.getGlobal.warning(s"More than one logic specification given; only using the first one ('${logicSpec.head.name}'), " +
+          s"the remaining ones are ignored.")
+        logicSpec.head
+      } else logicSpec.head
+      (spec, sortDecls.toSeq, typeDecls.toSeq, defDecls.toSeq, remainingFormulas.toSeq)
+    }
+  }
+
+  /////////// TFF specific split
+  protected[embeddings] final def splitTFFInput(input: Seq[AnnotatedFormula]): (TFFAnnotated, Seq[TFFAnnotated]) = {
+    import collection.mutable
+    val logicSpecs: mutable.Buffer[TFFAnnotated] = mutable.Buffer.empty
+    val otherFormulas: mutable.Buffer[TFFAnnotated] = mutable.Buffer.empty
+
+    input.foreach {
+      case f@TFFAnnotated(_, role, _, _) => role match {
+        case "logic" => logicSpecs.append(f)
+        case _ => otherFormulas.append(f)
+      }
+      case f => throw new EmbeddingException(s"TFF formula expected but ${f.formulaType.toString} formula given. Aborting.")
+    }
+
+    if (logicSpecs.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")
+    else {
+      val spec = if (logicSpecs.size > 1) {
+        Logger.getGlobal.warning(s"More than one logic specification given; only using the first one ('${logicSpecs.head.name}'), " +
+          s"the remaining ones are ignored.")
+        logicSpecs.head
+      } else logicSpecs.head
+      (spec, otherFormulas.toSeq)
+    }
+  }
+
+  type TFFLogicSpec = TFFAnnotated
+  type TFFSortDecl = TFFAnnotated
+  type TFFTypeDecl = TFFAnnotated
+  type TFFDefDecl = TFFAnnotated
+  type TFFRemainingFormulas = TFFAnnotated
+  protected[embeddings] final def splitTFFInputByDifferentKindOfFormulas(input: Seq[AnnotatedFormula]):
+  (TFFLogicSpec, Seq[TFFSortDecl], Seq[TFFTypeDecl], Seq[TFFDefDecl], Seq[TFFRemainingFormulas]) = {
+    import collection.mutable
+    val logicSpec: mutable.Buffer[TFFLogicSpec] = mutable.Buffer.empty
+    val sortDecls: mutable.Buffer[TFFSortDecl] = mutable.Buffer.empty
+    val typeDecls: mutable.Buffer[TFFTypeDecl] = mutable.Buffer.empty
+    val defDecls: mutable.Buffer[TFFDefDecl] = mutable.Buffer.empty
+    val remainingFormulas: mutable.Buffer[TFFRemainingFormulas] = mutable.Buffer.empty
+
+    input.foreach {
+      case f@TFFAnnotated(_, role, formula, _) => role match {
+        case "logic" => logicSpec.append(f)
+        case "type" => formula match {
+          case TFF.Typing(_, typ) => typ match {
+            case TFF.AtomicType("$tType", Seq()) => sortDecls.append(f)
+            case _ => typeDecls.append(f)
+          }
+          case _ => throw new EmbeddingException(s"Malformed type definition in formula '${f.name}', aborting.")
+        }
+        case "definition" => defDecls.append(f)
+        case _ => remainingFormulas.append(f)
+      }
+      case f => throw new EmbeddingException(s"TFF formula expected but ${f.formulaType.toString} formula given. Aborting.")
+    }
+
+    if (logicSpec.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")
+    else {
+      val spec = if (logicSpec.size > 1) {
+        Logger.getGlobal.warning(s"More than one logic specification given; only using the first one ('${logicSpec.head.name}'), " +
+          s"the remaining ones are ignored.")
+        logicSpec.head
+      } else logicSpec.head
+      (spec, sortDecls.toSeq, typeDecls.toSeq, defDecls.toSeq, remainingFormulas.toSeq)
     }
 
   }
@@ -88,6 +209,14 @@ package object embeddings {
     (default, mapping)
   }
 
+  protected[embeddings] def parseListRHSNew(rhs: TPTP.THF.Formula): (Seq[TPTP.THF.Formula], Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]]) = {
+    import TPTP.THF.Tuple
+    rhs match {
+      case Tuple(entries) if entries.nonEmpty => parseTupleListRHSNew(entries)
+      case _ => (Seq(rhs), Map.empty)
+    }
+  }
+
   protected[embeddings] def parseListRHS(rhs: TPTP.THF.Formula): (Seq[String], Map[TPTP.THF.Formula, Seq[String]]) = {
     import TPTP.THF.{FunctionTerm, Tuple}
     rhs match {
@@ -121,6 +250,33 @@ package object embeddings {
         }
 
       case e => throw new EmbeddingException(s"Tuple entry of semantics specification could not be read: '${e.pretty}'")
+    }
+    (default, mapping)
+  }
+
+
+  protected[embeddings] def parseTupleListRHSNew(tupleElements: Seq[TPTP.THF.Formula]): (Seq[TPTP.THF.Formula], Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]]) = {
+    import TPTP.THF.{BinaryFormula, Tuple}
+    var default: Seq[TPTP.THF.Formula] = Seq.empty
+    var mapping: Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]] = Map.empty
+
+    tupleElements foreach {
+      case bf@BinaryFormula(TPTP.THF.==, name, Tuple(entries)) if entries.nonEmpty =>
+        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
+        else {
+          val (convertedEntries, convertedEntriesMap) = parseTupleListRHSNew(entries)
+          if (convertedEntriesMap.isEmpty) {
+            mapping = mapping + (name -> convertedEntries)
+          } else {
+            throw new EmbeddingException(s"Could not read semantic specification '${bf.pretty}'.")
+          }
+        }
+      case BinaryFormula(TPTP.THF.==, name, rhs) =>
+        if (mapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
+        else {
+          mapping = mapping + (name -> Seq(rhs))
+        }
+      case e => default = default :+ e
     }
     (default, mapping)
   }
