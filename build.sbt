@@ -1,7 +1,7 @@
 lazy val commonSettings = Seq(
   organization := "org.leo",
-  version := "1.7.7",
-  scalaVersion := "2.13.8",
+  version := "1.7.8",
+  scalaVersion := "2.13.10",
   scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
@@ -27,8 +27,8 @@ lazy val runtime = (project in file("embedding-runtime"))
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.4",
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.12" % "test"
+    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.5",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
 	)
 
 lazy val app = (project in file("embedding-app"))
@@ -40,6 +40,6 @@ lazy val app = (project in file("embedding-app"))
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
     unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.4",
-	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.12" % "test"
+    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.5",
+	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
 	).dependsOn(runtime)
