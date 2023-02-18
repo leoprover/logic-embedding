@@ -7,6 +7,7 @@ object Library {
     Map(
       "$$dhol" -> DHOLEmbedding,
       "$modal" -> ModalEmbedding,
+      "$$modal_old" -> ModalLogicEmbeddingOld,
       "$alethic_modal" -> ModalEmbedding,
       "$deontic_modal" -> ModalEmbedding,
       "$epistemic_modal" -> ModalEmbedding,
