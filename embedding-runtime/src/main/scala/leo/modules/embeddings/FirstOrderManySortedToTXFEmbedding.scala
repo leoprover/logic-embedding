@@ -6,6 +6,8 @@ import datastructures.TPTP
 import TPTP.{AnnotatedFormula, TFF, TFFAnnotated}
 import leo.modules.input.TPTPParser.annotatedTFF
 
+import scala.annotation.unused
+
 object FirstOrderManySortedToTXFEmbedding extends Embedding {
 
   object FOMLToTXFEmbeddingParameter extends Enumeration { }
@@ -56,7 +58,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
     @inline private[this] def localWorldConstant: TFF.Term = TFF.AtomicTerm(localWorldName, Seq.empty)
     @inline private[this] def localWorldVariable: TFF.Term = TFF.Variable(localWorldVariableName)
     @inline private[this] val indexTypeName: String = "'$ki_index'"
-    @inline private[this] def indexType: TFF.Type = TFF.AtomicType(indexTypeName, Seq.empty)
+    @unused @inline private[this] def indexType: TFF.Type = TFF.AtomicType(indexTypeName, Seq.empty)
     @inline private[this] val existencePredicateName: String = "'$ki_exists_in_world'"
     @inline private[this] def existencePredicateNameForType(ty: String): String = s"'${unescapeTPTPName(existencePredicateName)}_$ty'"
     private[this] val indexValues: collection.mutable.Set[TFF.Term] = collection.mutable.Set.empty
