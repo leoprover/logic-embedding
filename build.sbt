@@ -6,7 +6,11 @@ lazy val commonSettings = Seq(
       "-deprecation",
       "-feature",
     ),
-  licenses += "BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause")
+  licenses += "BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause"),
+  resolvers += "Sonatype S01 OSS Snapshots" at "https://s01.oss.sonatype.org/content/repositories/snapshots",
+
+  libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.5+7-f3855f3f-SNAPSHOT",
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
 )
 
 lazy val embedding = (project in file("."))
@@ -26,9 +30,7 @@ lazy val runtime = (project in file("embedding-runtime"))
     },
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
-    unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.5",
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
+    unmanagedBase := baseDirectory.value / ".." / "lib"
 	)
 
 lazy val app = (project in file("embedding-app"))
@@ -39,7 +41,5 @@ lazy val app = (project in file("embedding-app"))
     assembly/mainClass := Some("leo.modules.EmbeddingApp"),
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
-    unmanagedBase := baseDirectory.value / ".." / "lib",
-    libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.6.5",
-	  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
+    unmanagedBase := baseDirectory.value / ".." / "lib"
 	).dependsOn(runtime)
