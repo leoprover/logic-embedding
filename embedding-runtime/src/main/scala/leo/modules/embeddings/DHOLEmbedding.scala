@@ -2,7 +2,7 @@ package leo.modules.embeddings
 
 
 import leo.datastructures.TPTP
-import TPTP.{AnnotatedFormula, THF}
+import TPTP.{AnnotatedFormula, Annotations, THF}
 import leo.datastructures.TPTP.THF.FunctionTerm
 
 import scala.annotation.tailrec
@@ -60,8 +60,8 @@ object DHOLEmbedding extends Embedding {
       val convertedTypeFormulas = typeFormulas.flatMap(convertTypeFormula)
       val convertedDefinitionFormulas = definitionFormulas.map(convertDefinitionFormula)
       val convertedOtherFormulas = otherFormulas.map(convertAnnotatedFormula)
-      val boolPred = TPTP.THFAnnotated(typePredName("bool"), "definition",
-        THF.Logical(THF.BinaryFormula(THF.Eq, atomicTerm(typePredName("bool")),
+      val boolPred = TPTP.THFAnnotated(typeRelName("bool"), "definition",
+        THF.Logical(THF.BinaryFormula(THF.Eq, atomicTerm(typeRelName("bool")),
           THF.QuantifiedFormula(THF.^, Seq(("X", bool)), atomicTerm("$true")))), None)
 
       val result = Seq(boolPred) ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
@@ -154,7 +154,7 @@ object DHOLEmbedding extends Embedding {
     }
 
     @tailrec
-    private def convertTypeFormula(formula: AnnotatedFormula): Seq[AnnotatedFormula] = {
+    private def convertTypeFormula(formula: AnnotatedFormula): List[AnnotatedFormula] = {
       formula match {
         // Normalize nested pi-types to simplify the subsequent logic
         case TPTP.THFAnnotated(n, "type", THF.Typing(s,THF.QuantifiedFormula(THF.!>, vl, THF.QuantifiedFormula(THF.!>, vl2, bdy))), an) =>
@@ -162,36 +162,62 @@ object DHOLEmbedding extends Embedding {
         case TPTP.THFAnnotated(name, "type", TPTP.THF.Typing(symbol, typ), annotations) =>
           val convertedType = convertType(typ)
           var declType: THF.Type = univTp
+          val base = atomicTerm(symbol)
+          def typeRelDecls(variableList: Seq[(String, THF.Type)]) = {
+            val declTp = convertPi(variableList, FuncType(base, FuncType(base, bool)))
+            val tpRelDecl = TPTP.THFAnnotated(typeRelName(symbol), "type",
+              TPTP.THF.Typing(typeRelName(symbol), declTp), annotations)
+
+            val baseRelTp = THF.FunctionTerm(symbol, variableList map {v => THF.Variable(v._1)})
+            def baseRel(x:String, y:String) = typeRel(baseRelTp, THF.Variable(x), THF.Variable(y))
+            val symAx = THF.QuantifiedFormula(THF.!, Seq(("RX", base), ("RY", base)),
+              THF.BinaryFormula(THF.Eq, baseRel("RX", "RY"), baseRel("RY", "RX")))
+            val transAx = THF.QuantifiedFormula(THF.!, Seq(("RX", base), ("RY", base), ("RZ", base)),
+              THF.BinaryFormula(THF.Impl, baseRel("RX", "RY"),
+                THF.BinaryFormula(THF.Impl, baseRel("RY", "RZ"), baseRel("RX", "RZ"))))
+            val reduceAx = THF.QuantifiedFormula(THF.!, Seq(("RX", base), ("RY", base)),
+              THF.BinaryFormula(THF.Eq, THF.BinaryFormula(THF.&, THF.BinaryFormula(THF.Eq,
+                THF.Variable("RX"), THF.Variable("RY")), baseRel("RX", "RX")), baseRel("RX", "RY")))
+            def axiom(formulaBody: THF.Formula) = if (variableList.nonEmpty) {
+              THF.Logical(THF.QuantifiedFormula(THF.!, variableList, formulaBody))
+            } else {
+              THF.Logical(formulaBody)
+            }
+
+            val tpRelSym = TPTP.THFAnnotated(typeRelSymName(symbol),
+              "axiom", axiom(symAx), annotations)
+            val tpRelTrans = TPTP.THFAnnotated(typeRelTransName(symbol),
+              "axiom", axiom(transAx), annotations)
+            val tpRelReduce = TPTP.THFAnnotated(typeRelReduceName(symbol),
+              "axiom", axiom(reduceAx), annotations)
+            List(tpRelDecl, tpRelSym, tpRelTrans, tpRelReduce)
+          }
           val type_pred = typ match {
             // A generic type declaration
             case THF.QuantifiedFormula(THF.!>, variableList, ret) if ret == univTp =>
-              val tp = convertPi(variableList,
-                FuncType(atomicTerm(symbol), bool))
-              TPTP.THFAnnotated(typePredName(symbol), "type", TPTP.THF.Typing(typePredName(symbol), tp), annotations)
+              typeRelDecls(variableList)
             // special case of a type declaration with no arguments
-            case THF.FunctionTerm("$tType", Seq()) =>
-              val tp = FuncType(atomicTerm(symbol), bool)
-              TPTP.THFAnnotated(typePredName(symbol), "type", TPTP.THF.Typing(typePredName(symbol), tp), annotations)
+            case THF.FunctionTerm("$tType", Seq()) => typeRelDecls(Nil)
             // This is a term declaration
             case _ =>
               declType = convertedType
               constants ::= (symbol, typ)
-              val tpPred = typePred(typ,atomicTerm(symbol))
-              TPTP.THFAnnotated(axName(symbol), "axiom", THF.Logical(tpPred), annotations)
+              val tpPred = typePred(typ,base)
+              List(TPTP.THFAnnotated(axName(symbol), "axiom", THF.Logical(tpPred), annotations))
           }
           val convertedTyping = TPTP.THF.Typing(symbol, declType)
           val convertedFormula = TPTP.THFAnnotated(name, "type", convertedTyping, annotations)
-          Seq(convertedFormula, type_pred)
+          convertedFormula::type_pred
         case TPTP.THFAnnotated(_, _, _, _) => throw new EmbeddingException(s"Unexpected error: Type conversion called on non-type-statement.")
         case _ => throw new EmbeddingException(s"Only embedding of THF files supported.")
       }
     }
 
     /**
-     * The following two functions are the most interesting part of the entire ambedding.
+     * The following three functions are the most interesting part of the entire ambedding.
      * They describe which additional conditions we need to add to the translation to ensure it doesn't loose information.
      *
-     * A similar translation would likely only noticeably differ in these two functions
+     * A similar translation would likely only noticeably differ in these functions
      */
 
     /**
@@ -205,35 +231,21 @@ object DHOLEmbedding extends Embedding {
     private def relativizedEq(conn: THF.BinaryConnective)(left: THF.Formula, right: THF.Formula)(implicit variables: List[(String, TPTP.THF.Type)] = Nil) : THF.Formula = {
       val convertedLeft: TPTP.THF.Formula = convertFormula(left)
       val convertedRight: TPTP.THF.Formula = convertFormula(right)
-      val leftTp = inferType(variables, constants)(left)
-      val rightTp = inferType(variables, constants)(right)
-      val functionType: (Boolean, Option[(Seq[(String, THF.Formula)], THF.Formula)]) = leftTp match {
-        case THF.BinaryFormula(THF.FunTyConstructor, domain, codomain) => (true, Some((Seq(("aTp", domain)), codomain)))
-        case THF.QuantifiedFormula(quantifier, variableList, body) => quantifier match {
-          case THF.!> => (true, Some((variableList, body)))
-          case _ => (false, None)
-        }
-        case _ => (false, None)
-      }
-      def relativizeEqFirstOrder(equality: THF.Formula) = {
-        THF.BinaryFormula(THF.&, typePred(leftTp, convertedLeft),
-          THF.BinaryFormula(THF.&, typePred(rightTp, convertedRight), equality))
-      }
-      def relativizeHigherOrderEq(conn: THF.BinaryConnective) = {
-        val (argSeq, _) = functionType._2.get
-        val args = argSeq map { case (arg, _) => THF.Variable(arg) }
-        val leftApplied = args.foldRight(left)({ case (arg, func) =>
-          THF.BinaryFormula(THF.App, func, arg)})
-        val rightApplied = args.foldRight(right)({ case (arg, func) =>
-          THF.BinaryFormula(THF.App, func, arg)})
-        val innerEq = THF.BinaryFormula(conn, leftApplied, rightApplied)
-        val extensionalEq = THF.QuantifiedFormula(THF.!, argSeq, innerEq)
-        convertFormula(extensionalEq)
+      // in case of unsupported terms, type inference may fail
+      val eqType = try {
+        inferType(variables, constants)(left)
+      } catch {
+        case _: EmbeddingException =>
+          try {
+            inferType(variables, constants)(right)
+          }
+          catch {
+            case _: EmbeddingException => throw new EmbeddingException(s"Failed to infer type of equality '${THF.BinaryFormula(conn, left, right)}'. ")
+          }
       }
       conn match {
-        case THF.Eq | THF.Neq if ! functionType._1 =>
-          relativizeEqFirstOrder(THF.BinaryFormula(conn, convertedLeft, convertedRight))
-        case THF.Eq | THF.Neq if functionType._1 => relativizeHigherOrderEq(conn)
+        case THF.Eq  => typeRel(eqType, convertedLeft, convertedRight)
+        case THF.Neq => THF.UnaryFormula(THF.~, typeRel(eqType, convertedLeft, convertedRight))
         case _ => THF.BinaryFormula(conn, convertedLeft, convertedRight)
       }
     }
@@ -244,28 +256,69 @@ object DHOLEmbedding extends Embedding {
      * @return
      */
     private def typePred(typ: THF.Formula, tm: THF.Formula): THF.Formula = {
+      typeRel(typ, tm, tm)
+    }
+
+    /**
+     * Generates the typing condition, expands typing relations over Pi-types
+     * @param typ the type of the typing relation
+     * @param left the term on the left of the typing relation
+     * @param right the term on the right of the typing relation
+     * @return the typing relation for type typ applied to left and right
+     */
+    private def typeRel(typ: THF.Formula, left: THF.Formula, right: THF.Formula): THF.Formula = {
+      def relAppl(tp: THF.FunctionTerm, left: THF.Formula, right: THF.Formula) = tp match {
+        case THF.FunctionTerm(f, args) =>
+          THF.FunctionTerm(typeRelName(f), args.map(convertFormula).appendedAll(Seq(left, right)))
+      }
+      // optimized version of typeRel in first-order
+      def optimizedRelAppl(tp: THF.FunctionTerm, left: THF.Formula, right: THF.Formula) = {
+        // we might translate relAppl via the reduceAx axiom rather than directly to a PER
+        // however brief testing suggests that this doesn't really improve the performance of the overall prover system
+        relAppl(tp, left, right)
+      }
+
+      def typeRelFuncType(x: String, tp: THF.Type, codomain: THF.Formula) = {
+        val convertedTp = convertType(tp)
+        val leftAppl = left match {
+          case THF.FunctionTerm(s, args) => THF.FunctionTerm(s, args.:+(THF.Variable(x)))
+          case _ => THF.BinaryFormula(THF.App, left, THF.Variable(x))
+        }
+        val rightAppl = right match {
+          case THF.FunctionTerm(s, args) => THF.FunctionTerm(s, args.:+(THF.Variable(x)))
+          case _ => THF.BinaryFormula(THF.App, right, THF.Variable(x))
+        }
+        val innerEq = codomain match {
+          case f: FunctionTerm => optimizedRelAppl(f, leftAppl, rightAppl)
+          case _ => typeRel(codomain, leftAppl, rightAppl)
+        }
+
+        THF.QuantifiedFormula(THF.!, Seq((x, convertedTp), (primedName(x), convertedTp)),
+          THF.BinaryFormula(THF.Impl, typeRel(tp, TPTP.THF.Variable(x), TPTP.THF.Variable(primedName(x))),
+            innerEq))
+      }
       typ match {
-        case THF.FunctionTerm(f, args) => THF.FunctionTerm(typePredName(f), args.map(convertFormula).appended(tm))
+        case DHOLEmbeddingUtils.bool => THF.BinaryFormula(THF.Eq, left, right)
+        case f@THF.FunctionTerm(_, _) => optimizedRelAppl(f, left, right)
+        case THF.BinaryFormula(THF.FunTyConstructor, tp, codomain)  =>
+          val x = "x_"+tp.pretty
+          typeRelFuncType(x, tp, codomain)
         case THF.QuantifiedFormula(THF.!>, vl, body) => vl.toList match {
           case (x,tp)::variableList =>
-            val convertedTp = convertType(tp)
-            val simplifiedRes = tm match {
-              case THF.FunctionTerm(s, args) => THF.FunctionTerm(s, args.:+(THF.Variable(x)))
-              case _ => THF.BinaryFormula(THF.App, tm, THF.Variable(x))
-            }
-            val bodyTp = THF.QuantifiedFormula(THF.!>, variableList, body)
-              THF.QuantifiedFormula(THF.!, Seq((x, convertedTp)), THF.BinaryFormula(THF.Impl,
-                typePred(tp, TPTP.THF.Variable(x)), typePred(bodyTp, simplifiedRes)))
-          case Nil => typePred(body, tm)
+            val codomain = THF.QuantifiedFormula(THF.!>, variableList, body)
+            typeRelFuncType(x, tp, codomain)
+          case Nil => typeRel(body, left, right)
         }
-        // TODO: This code is apparently unreachable, but it shouldn't
-        case THF.FunctionTerm("$o", args) if args.isEmpty => atomicTerm(typePredName("bool"))
-        case _ => throw new EmbeddingException(s"Formula unsupported by logic '$name': '${typ.pretty}'")
+        case _ => throw new EmbeddingException(s"Typing relation not defined on unsupported type '$name': '${typ.pretty}'")
       }
     }
 
-    private def typePredName(f:String): String = f+"_pred"
+    private def typeRelName(f:String): String = f+"_rel"
+    private def typeRelSymName(f:String): String = typeRelName(f)+"_sym"
+    private def typeRelTransName(f:String): String = typeRelName(f)+"_trans"
+    private def typeRelReduceName(f:String): String = typeRelName(f)+"_reduce"
     private def axName(f:String): String = f+"_tp_ax"
+    private def primedName(x: String) = x+"_prime"
   }
 }
 
@@ -327,7 +380,6 @@ object DHOLEmbeddingUtils {
       case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) => applyNTp(codomain, args.tail)
       case THF.QuantifiedFormula(THF.!>, variableList, body) =>
         val substBody = substituteVars(body)(variableList, args)
-        println(substBody.pretty)
         if (variableList.length == args.length) { substBody } else {
           THF.QuantifiedFormula(THF.!>, variableList.drop(args.length), substBody)
         }
