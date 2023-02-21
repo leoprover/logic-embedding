@@ -22,5 +22,5 @@ trait Embedding {
   def embeddingParameter: OptionType
   /** Given the specification `specs` construct a valid TPTP logic specification for the logic
    * targeted by this embedding. */
-  def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated
+  def generateSpecification(specs: Map[String, String]): TPTP.AnnotatedFormula
 }

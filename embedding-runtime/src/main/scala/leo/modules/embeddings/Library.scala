@@ -1,12 +1,13 @@
 package leo.modules.embeddings
 
 object Library {
-  final def version: String = "1.7"
+  final def version: String = "1.8"
 
   def embeddingTable: Map[String, Embedding] = {
     Map(
       "$$dhol" -> DHOLEmbedding,
       "$modal" -> ModalEmbedding,
+      "$$modal_old" -> ModalLogicEmbeddingOld,
       "$alethic_modal" -> ModalEmbedding,
       "$deontic_modal" -> ModalEmbedding,
       "$epistemic_modal" -> ModalEmbedding,
@@ -16,7 +17,8 @@ object Library {
       "$$hybrid" -> HybridLogicEmbedding,
       "$$pal" -> PublicAnnouncementLogicEmbedding,
       "$$normative" -> NormativeDSLEmbedding,
-      "$$termmodal" -> TermModalEmbedding
+      "$$termmodal" -> TermModalEmbedding,
+      "$$fomlModel" -> FirstOrderManySortedToTXFEmbedding
     )
   }
 }

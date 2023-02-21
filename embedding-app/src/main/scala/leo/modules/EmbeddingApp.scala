@@ -95,7 +95,7 @@ object EmbeddingApp {
         case e: EmbeddingException =>
           error = Some(s"An error occurred during embedding: ${e.getMessage}")
         case e: IllegalArgumentException =>
-          error = Some(e.toString)
+          error = if (e.getMessage == null) Some(e.toString) else Some(e.getMessage)
           if (!tstpOutput) usage()
         case e: UnsupportedLogicException =>
           error = Some(s"Unsupported logic '${e.logic}'. Aborting.")
