@@ -60,11 +60,8 @@ object DHOLEmbedding extends Embedding {
       val convertedTypeFormulas = typeFormulas.flatMap(convertTypeFormula)
       val convertedDefinitionFormulas = definitionFormulas.map(convertDefinitionFormula)
       val convertedOtherFormulas = otherFormulas.map(convertAnnotatedFormula)
-      val boolPred = TPTP.THFAnnotated(typeRelName("bool"), "definition",
-        THF.Logical(THF.BinaryFormula(THF.Eq, atomicTerm(typeRelName("bool")),
-          THF.QuantifiedFormula(THF.^, Seq(("X", bool)), atomicTerm("$true")))), None)
 
-      val result = Seq(boolPred) ++ convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
+      val result = convertedTypeFormulas ++ convertedDefinitionFormulas ++ convertedOtherFormulas
       TPTP.Problem(problem.includes, result, Map.empty)
     }
 
@@ -101,7 +98,7 @@ object DHOLEmbedding extends Embedding {
       formula match {
         case THF.FunctionTerm(f, args) =>
           val convertedArgs = args.map(convertFormula)
-          THF.FunctionTerm(f, convertedArgs)
+          THFApply(atomicTerm(f), convertedArgs)
 
         case THF.UnaryFormula(connective, body) =>
           THF.UnaryFormula(connective, convertFormula(body))
@@ -147,7 +144,7 @@ object DHOLEmbedding extends Embedding {
     }
     private def convertType(typ: TPTP.THF.Type): TPTP.THF.Type = {
       typ match {
-        case THF.FunctionTerm(f, _) => THF.FunctionTerm(f, Seq.empty)
+        case THF.FunctionTerm(f, _) => atomicTerm(f)
         case THF.QuantifiedFormula(THF.!>, variableList, body) => convertPi(variableList, convertType(body))
         case _ => typ
       }
@@ -176,8 +173,9 @@ object DHOLEmbedding extends Embedding {
               THF.BinaryFormula(THF.Impl, baseRel("RX", "RY"),
                 THF.BinaryFormula(THF.Impl, baseRel("RY", "RZ"), baseRel("RX", "RZ"))))
             val reduceAx = THF.QuantifiedFormula(THF.!, Seq(("RX", base), ("RY", base)),
-              THF.BinaryFormula(THF.Eq, THF.BinaryFormula(THF.&, THF.BinaryFormula(THF.Eq,
-                THF.Variable("RX"), THF.Variable("RY")), baseRel("RX", "RX")), baseRel("RX", "RY")))
+              THF.BinaryFormula(THF.Impl, baseRel("RY", "RY"),
+              THF.BinaryFormula(THF.Eq, baseRel("RX", "RY"), THF.BinaryFormula(THF.Eq,
+                THF.Variable("RX"), THF.Variable("RY")))))
             def axiom(formulaBody: THF.Formula) = if (variableList.nonEmpty) {
               THF.Logical(THF.QuantifiedFormula(THF.!, variableList, formulaBody))
             } else {
@@ -269,7 +267,7 @@ object DHOLEmbedding extends Embedding {
     private def typeRel(typ: THF.Formula, left: THF.Formula, right: THF.Formula): THF.Formula = {
       def relAppl(tp: THF.FunctionTerm, left: THF.Formula, right: THF.Formula) = tp match {
         case THF.FunctionTerm(f, args) =>
-          THF.FunctionTerm(typeRelName(f), args.map(convertFormula).appendedAll(Seq(left, right)))
+          THFApply(atomicTerm(typeRelName(f)), args.map(convertFormula).appendedAll(Seq(left, right)))
       }
       // optimized version of typeRel in first-order
       def optimizedRelAppl(tp: THF.FunctionTerm, left: THF.Formula, right: THF.Formula) = {
@@ -280,14 +278,8 @@ object DHOLEmbedding extends Embedding {
 
       def typeRelFuncType(x: String, tp: THF.Type, codomain: THF.Formula) = {
         val convertedTp = convertType(tp)
-        val leftAppl = left match {
-          case THF.FunctionTerm(s, args) => THF.FunctionTerm(s, args.:+(THF.Variable(x)))
-          case _ => THF.BinaryFormula(THF.App, left, THF.Variable(x))
-        }
-        val rightAppl = right match {
-          case THF.FunctionTerm(s, args) => THF.FunctionTerm(s, args.:+(THF.Variable(x)))
-          case _ => THF.BinaryFormula(THF.App, right, THF.Variable(x))
-        }
+        val leftAppl = THF.BinaryFormula(THF.App, left, THF.Variable(x))
+        val rightAppl = THF.BinaryFormula(THF.App, right, THF.Variable(x))
         val innerEq = codomain match {
           case f: FunctionTerm => optimizedRelAppl(f, leftAppl, rightAppl)
           case _ => typeRel(codomain, leftAppl, rightAppl)
@@ -297,7 +289,13 @@ object DHOLEmbedding extends Embedding {
           THF.BinaryFormula(THF.Impl, typeRel(tp, TPTP.THF.Variable(x), TPTP.THF.Variable(primedName(x))),
             innerEq))
       }
-      typ match {
+      // unwrap iterated Apps of a symbol into a FunctionTerm
+      def reformatType(tp: THF.Formula, args: Seq[THF.Formula] = Seq()): THF.Formula = tp match {
+        case THF.BinaryFormula(THF.App, f, newArgs) => reformatType(f, args.appended(newArgs))
+        case THF.FunctionTerm(f, initArgs) => THF.FunctionTerm(f, initArgs.appendedAll(args))
+        case default => THFApply(default, args.toList)
+      }
+      reformatType(typ) match {
         case DHOLEmbeddingUtils.bool => THF.BinaryFormula(THF.Eq, left, right)
         case f@THF.FunctionTerm(_, _) => optimizedRelAppl(f, left, right)
         case THF.BinaryFormula(THF.FunTyConstructor, tp, codomain)  =>
@@ -329,17 +327,8 @@ object DHOLEmbeddingUtils {
   private[embeddings] def FuncType(A: THF.Formula, B:THF.Formula) = THF.BinaryFormula(THF.FunTyConstructor, A, B)
 
   /** The application of function func to the arguments args */
-  private[embeddings] def THFApply(func: THF.Formula, args: List[THF.Formula]): THF.Formula = {
-    func match {
-      case THF.FunctionTerm(f, fargs) => THF.FunctionTerm(f, fargs++args)
-      case _ =>
-        args match {
-          case Nil => func
-          case List(arg) => THF.BinaryFormula(THF.App, func, arg)
-          case hd::tl => THF.BinaryFormula(THF.App, func, THFApply(hd, tl))
-        }
-    }
-  }
+  private[embeddings] def THFApply(func: THF.Formula, args: Seq[THF.Formula]): THF.Formula =
+    args.foldLeft(func)({case (fappl, x) => THF.BinaryFormula(THF.App, fappl, x)})
   /**
    * Substitute the free variables from variableList in the term body by their definiens in replArgs
    * @param body the term to apply the substitution to
