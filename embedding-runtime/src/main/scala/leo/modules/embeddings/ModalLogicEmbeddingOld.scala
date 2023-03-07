@@ -23,8 +23,8 @@ object ModalLogicEmbeddingOld extends Embedding {
   override type OptionType = ModalLogicEmbeddingOldOption.type
   override final def embeddingParameter: ModalLogicEmbeddingOldOption.type = ModalLogicEmbeddingOldOption
 
-  override final def name: String = "modal"
-  override final def version: String = "1.5.5"
+  override final def name: String = "modal_old"
+  override final def version: String = "1.5.6"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -442,8 +442,8 @@ object ModalLogicEmbeddingOld extends Embedding {
       index0
     }
     private[this] def escapeModalIndex(index: THF.Formula): THF.FunctionTerm = index match {
-      case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"#$name", args)
-      case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"#$value", Seq.empty)
+      case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"'#$name'", args)
+      case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"'#$value'", Seq.empty)
       case _ => throw new EmbeddingException(s"Unsupported index '${index.pretty}'")
     }
 
@@ -1095,7 +1095,7 @@ object ModalLogicEmbeddingOld extends Embedding {
     private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
       assert(spec.role == "logic")
       spec.formula match {
-        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(name, Seq()),THF.Tuple(spec0))) if Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal") contains name =>
+        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(name, Seq()),THF.Tuple(spec0))) if Seq("$$modal_old", "$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal") contains name =>
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {

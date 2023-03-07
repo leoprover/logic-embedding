@@ -22,7 +22,7 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "2.0.0"
+  override final def version: String = "2.0.1"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -76,11 +76,11 @@ object ModalEmbedding extends Embedding {
     private[this] final case object CumulativeDomain extends DomainType
     private[this] final case object DecreasingDomain extends DomainType
     private[this] var domainMap: Map[String, DomainType] = Map.empty
-    /* Initialize map */
+    /* Initialize map: Everything with dollar (or dollar dollar) is interpreted, so it's contant domain. */
     domainMap += ("$o" -> ConstantDomain)
     domainMap += ("$int" -> ConstantDomain)
     domainMap += ("$rat" -> ConstantDomain)
-    domainMap += ("$real" -> ConstantDomain)
+    domainMap += ("$real" -> ConstantDomain) // TODO: Rework in ... "if starts with dollar, then constant domain"
 
     // (3) Modal operator properties, for now as string
     private[this] var modalsMap: Map[THF.Formula, Seq[String]] = Map.empty
@@ -123,7 +123,7 @@ object ModalEmbedding extends Embedding {
       TPTP.Problem(problem.includes, result, updatedComments)
     }
 
-    def convertDefinitionFormula(formula: THFAnnotated): AnnotatedFormula = {
+    private[this] def convertDefinitionFormula(formula: THFAnnotated): AnnotatedFormula = {
       formula match {
         case THFAnnotated(name, "definition", THF.Logical(THF.BinaryFormula(THF.Eq, THF.FunctionTerm(symbolName, Seq()), body)), annotations) =>
           THFAnnotated(name, "definition", THF.Logical(THF.BinaryFormula(THF.Eq, THF.FunctionTerm(symbolName, Seq()), convertFormula(body))), annotations)
@@ -131,7 +131,7 @@ object ModalEmbedding extends Embedding {
       }
     }
 
-    def convertAnnotatedFormula(formula: THFAnnotated): AnnotatedFormula = {
+    private[this] def convertAnnotatedFormula(formula: THFAnnotated): AnnotatedFormula = {
       import leo.modules.tptputils._
       formula match {
         case TPTP.THFAnnotated(name, role, TPTP.THF.Logical(formula), annotations) =>
@@ -184,16 +184,17 @@ object ModalEmbedding extends Embedding {
             case Flexible => convertedArgs
           }
 
-        case THF.Variable(name) =>
-          boundVars.get(name) match {
-            case Some(ty) =>
-              val goal = goalType(ty)
-              goal match { // Special treatment for formulas/predicates: flexible
-                case THF.FunctionTerm("$o", Seq()) => formula
-                case _ => worldAbstraction(formula, boundVars) //make type correct by abstraction
-              }
-            case None => worldAbstraction(formula, boundVars) //loose bound variable, just do anything; the formula is not well-formed anyway.
-          }
+        case THF.Variable(_) =>
+          worldAbstraction(formula, boundVars) //make type correct by abstraction
+//          boundVars.get(name) match {
+//            case Some(ty) =>
+//              val goal = goalType(ty)
+//              goal match { // Special treatment for formulas/predicates: flexible
+//                case THF.FunctionTerm("$o", Seq()) => formula
+//                case _ => worldAbstraction(formula, boundVars) //make type correct by abstraction
+//              }
+//            case None => worldAbstraction(formula, boundVars) //loose bound variable, just do anything; the formula is not well-formed anyway.
+//          }
 
         // Special case: Modal operators (they are not constants from the signature)
         case THF.BinaryFormula(App, THF.ConnectiveTerm(nclConnective), body) if nclConnective.isInstanceOf[THF.VararyConnective] =>
@@ -245,7 +246,7 @@ object ModalEmbedding extends Embedding {
 
         case THF.UnaryFormula(connective, body) =>
           /* In theory, this could be rewritten to an application of body to a constant.
-             But this results in a ugly formula, because TPTP has a dedicated syntax for quantifications.
+             But this results in a ugly formula, because TPTP has a dedicated syntax for unary formulas.
              So we replace the result of doing this with an identical expression that uses a nicer syntax */
           val convertedBody: TPTP.THF.Formula = convertFormula(body, boundVars)
           val safeName = generateSafeName(boundVars) // a name that is not free in the formula
@@ -286,11 +287,12 @@ object ModalEmbedding extends Embedding {
           val appliedEls = THF.BinaryFormula(THF.App, convertedEls, THF.Variable(safeName))
           worldAbstraction(THF.ConditionalTerm(appliedCond, appliedThn, appliedEls), safeName)
 
-        case THF.LetTerm(typing, binding, body) => // Treat new symbols like bound variables
-          val convertedTyping: Map[String, TPTP.THF.Type] = typing.map { case (name, ty) => (name, convertVariableType(ty)) }
+        case THF.LetTerm(_, _, _) => // Treat new symbols like bound variables // TODO
+          throw new EmbeddingException("TPTP let statements currently not supported. Aborting.")
+          /*val convertedTyping: Map[String, TPTP.THF.Type] = typing.map { case (name, ty) => (name, convertVariableType(ty)) }
           val convertedBinding: Seq[(TPTP.THF.Formula, TPTP.THF.Formula)] = binding.map(a => (convertFormula(a._1, boundVars), convertFormula(a._2, boundVars)))
           val convertedBody = convertFormula(body, boundVars)
-          THF.LetTerm(convertedTyping, convertedBinding, convertedBody)
+          THF.LetTerm(convertedTyping, convertedBinding, convertedBody)*/
         // TPTP special cases END
 
         /* Remaining cases are:
@@ -313,21 +315,20 @@ object ModalEmbedding extends Embedding {
       THF.QuantifiedFormula(THF.^, Seq((name, THF.FunctionTerm(worldTypeName, Seq.empty))), body)
 
     private def mkSingleQuantified(quantifier: THF.Quantifier, worldName: String)(variable: THF.TypedVariable, acc: THF.Formula): THF.Formula = {
-      val convertedType = convertVariableType(variable._2)
-      val convertedVariable: THF.TypedVariable = (variable._1, convertedType)
-      quantifierType(convertedType)
+      val variableType = variable._2
+      quantifierType(variableType)
       try {
-        if (domainMap(variable._2.pretty) == ConstantDomain) THF.QuantifiedFormula(quantifier, Seq(convertedVariable), acc)
+        if (domainMap(variableType.pretty) == ConstantDomain) THF.QuantifiedFormula(quantifier, Seq(variable), acc)
         else {
           /* with exists-in-world guard */
-          val eiwPredicate = if (polymorphic) "eiw" else s"eiw_${serializeType(convertedType)}"
+          val eiwPredicate = if (polymorphic) "eiw" else s"eiw_${serializeType(variableType)}"
           val appliedEiw = THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(eiwPredicate), THF.Variable(variable._1)), THF.Variable(worldName))
           val convertedBody = quantifier match {
             case THF.! => THF.BinaryFormula(THF.Impl, appliedEiw, acc)
             case THF.? => THF.BinaryFormula(THF.&, appliedEiw, acc)
             case _ => acc
           }
-          THF.QuantifiedFormula(quantifier, Seq(convertedVariable), convertedBody)
+          THF.QuantifiedFormula(quantifier, Seq(variable), convertedBody)
         }
       } catch {
         case _:NoSuchElementException => throw new EmbeddingException(s"Domain semantics for type '${variable._2.pretty}' not defined; and no default semantics specified. Aborting.")
@@ -343,14 +344,6 @@ object ModalEmbedding extends Embedding {
             case THF.FunctionTerm("$o", Seq()) => Flexible
             case _ => if (rigidityDefaultExists) rigidityMap.default(name) else throw new EmbeddingException(s"Rigidity of symbol '$name' not defined and no default rigidity specified. Aborting.")
           }
-      }
-    }
-
-    private def getDefaultRigidityOfType(typ: THF.Type): Rigidity = {
-      val goal: TPTP.THF.Type = goalType(typ)
-      goal match { // Special treatment for formulas/predicates variables: flexible
-        case THF.FunctionTerm("$o", Seq()) => Flexible
-        case _ => Rigid // other variables are rigid.
       }
     }
 
@@ -380,11 +373,6 @@ object ModalEmbedding extends Embedding {
       worldTypeLiftBasedOnRigidity(typ, rigidity)
     }
 
-    private def convertVariableType(typ: TPTP.THF.Type): TPTP.THF.Type = {
-      val rigidity = getDefaultRigidityOfType(typ)
-      worldTypeLiftBasedOnRigidity(typ, rigidity)
-    }
-
     @inline private[this] def worldTypeLiftBasedOnRigidity(typ: THF.Type, rigidity: Rigidity): THF.Type =
       rigidity match {
         case Rigid => typ
@@ -410,8 +398,8 @@ object ModalEmbedding extends Embedding {
     private[this] var isS5 = false // True iff mono-modal and modality is S5
 
     private[this] def escapeModalIndex(index: THF.Formula): THF.FunctionTerm = index match {
-        case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"#$name", args)
-        case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"#$value", Seq.empty)
+        case THF.FunctionTerm(name, args) => THF.FunctionTerm(s"'#$name'", args)
+        case THF.NumberTerm(TPTP.Integer(value)) => THF.FunctionTerm(s"'#$value'", Seq.empty)
         case _ => throw new EmbeddingException(s"Unsupported index '${index.pretty}'")
       }
 
@@ -835,7 +823,7 @@ object ModalEmbedding extends Embedding {
       }
     }
 
-    lazy val semanticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
+    private[this] lazy val semanticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.annotatedTHF
       Map(
         "$modal_axiom_K" -> None,
@@ -866,7 +854,7 @@ object ModalEmbedding extends Embedding {
         // TODO: More axiom schemes
       )
     }
-    lazy val syntacticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
+    private[this] lazy val syntacticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.{annotatedTHF, thf}
 
       Map(
@@ -946,7 +934,7 @@ object ModalEmbedding extends Embedding {
       )
     }
 
-    lazy val indexedSyntacticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
+    private[this] lazy val indexedSyntacticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.{annotatedTHF, thf}
       Map(
         "$modal_axiom_K" -> None,
@@ -1067,7 +1055,7 @@ object ModalEmbedding extends Embedding {
       )
     }
 
-    lazy val indexedSemanticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
+    private[this] lazy val indexedSemanticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.annotatedTHF
       Map(
         "$modal_axiom_K" -> None,
@@ -1099,9 +1087,9 @@ object ModalEmbedding extends Embedding {
       )
     }
 
-    private def isModalAxiomName(name: String): Boolean = name.startsWith("$modal_axiom_")
-    private def isModalSystemName(name: String): Boolean = name.startsWith("$modal_system_")
-    lazy val modalSystemTable: Map[String, Seq[String]] = Map(
+    private[this] def isModalAxiomName(name: String): Boolean = name.startsWith("$modal_axiom_")
+    private[this] def isModalSystemName(name: String): Boolean = name.startsWith("$modal_system_")
+    private[this] lazy val modalSystemTable: Map[String, Seq[String]] = Map(
       "$modal_system_K" -> Seq("$modal_axiom_K"),
       "$modal_system_K4" -> Seq("$modal_axiom_K", "$modal_axiom_4"),
       "$modal_system_K5" -> Seq("$modal_axiom_K", "$modal_axiom_5"),
