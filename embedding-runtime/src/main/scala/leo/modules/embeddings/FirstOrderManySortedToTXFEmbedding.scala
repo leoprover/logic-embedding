@@ -8,21 +8,25 @@ import leo.modules.input.TPTPParser.annotatedTFF
 
 import scala.annotation.unused
 
-object FirstOrderManySortedToTXFEmbedding extends Embedding {
+object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingLike {
 
-  object FOMLToTXFEmbeddingParameter extends Enumeration { }
+  object FOMLToTXFEmbeddingParameter extends Enumeration {
+    // Hidden on purpose, to allow distinction between the object itself and its values.
+    //    type FOMLToTXFEmbeddingParameter = Value
+    @unused
+    final val MONOMORPHIC, POLYMORPHIC = Value
+  }
   override type OptionType = FOMLToTXFEmbeddingParameter.type
-
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.0"
+  override final val version: String = "1.1"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
-    TFFAnnotated("spec", "logic", TFF.Logical(TFF.AtomicFormula(`name`, Seq.empty)), None)
+    generateTFFSpecification(name, Seq("$modalities", "$quantification", "$constants") , specs)
 
   override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
-    new FirstOrderManySortedToTXFEmbeddingImpl(problem).apply()
+    new FirstOrderManySortedToTXFEmbeddingImpl(problem, embeddingOptions).apply()
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
                            embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): Seq[TPTP.AnnotatedFormula] =
@@ -31,7 +35,37 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
   /////////////////////////////////////////////////////////////////////////////////////////////
   /////////////// Embedding implementation BEGIN
   /////////////////////////////////////////////////////////////////////////////////////////////
-  private[this] final class FirstOrderManySortedToTXFEmbeddingImpl(problem: TPTP.Problem) {
+  private[this] final class FirstOrderManySortedToTXFEmbeddingImpl(problem: TPTP.Problem,
+                                                                   embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value])
+    extends ModalEmbeddingLike {
+
+    import FOMLToTXFEmbeddingParameter._
+
+    // Semantics dimensions
+    // (1) Rigid or flexible symbols
+    private[this] var rigidityMap: Map[String, Rigidity] = Map.empty
+    private[this] var reverseSymbolTypeMap: Map[TFF.Type, Set[String]] = Map.empty.withDefaultValue(Set.empty)
+    private[this] var rigidityDefaultExists: Boolean = false
+    /* Initialize map */
+    tptpDefinedPredicateSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
+    tptpDefinedFunctionSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
+
+    // (2) Quantification semantics
+    private[this] var domainMap: Map[String, DomainType] = Map.empty
+    /* Initialize map: Everything with dollar (or dollar dollar) is interpreted, so it's contant domain. */
+    domainMap += ("$o" -> ConstantDomain)
+    domainMap += ("$int" -> ConstantDomain)
+    domainMap += ("$rat" -> ConstantDomain)
+    domainMap += ("$real" -> ConstantDomain) // TODO: Rework in ... "if starts with dollar, then constant domain"
+
+    // (3) Modal operator properties, for now as string
+    private[this] var modalsMap: Map[TFF.Formula, Seq[String]] = Map.empty
+    private[this] var modalDefaultExists: Boolean = false
+    ////////////////////////////////////////////////////////////////////
+    // Embedding options
+    private val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
+    ////////////////////////////////////////////////////////////////////
+
     def apply(): TPTP.Problem = {
       val formulas = problem.formulas
       val (spec, sortFormulas, typeFormulas, definitionFormulas, otherFormulas) = splitTFFInputByDifferentKindOfFormulas(formulas)
@@ -280,13 +314,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
       TFF.QuantifiedFormula(TFF.?, Seq((newWorldVariableName, Some(worldType))), convertedBody)
     }
 
-    private[this] def generateFreshWorldVariable(boundVars: Set[String]): String = {
-      var candidateName: String = localWorldVariableName
-      while (boundVars.contains(candidateName)) {
-        candidateName = candidateName ++ "0"
-      }
-      candidateName
-    }
+    private[this] def generateFreshWorldVariable(boundVars: Set[String]): String = generateFreshTPTPVariableName(localWorldVariableName, boundVars)
+
     private[this] def escapeIndex(idx: TFF.Term): TFF.Term = {
       val escaped = idx match {
         case TFF.AtomicTerm(f, Seq()) => escapeAtomicWord(s"index($f)")
@@ -379,7 +408,74 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
 
     private[this] def createState(spec: TFFAnnotated): Unit = {
       spec.formula match {
-        case TFF.Logical(TFF.AtomicFormula(`name`, Seq())) =>
+        case TFF.Logical(TFF.AtomicFormula(`name`, Seq())) => ()
+        case TFF.Logical(TFF.MetaIdentity(TFF.AtomicTerm(`name`, Seq()), TFF.Tuple(spec0))) =>
+          spec0 foreach {
+            case TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(propertyName, Seq()), rhs)) =>
+              propertyName match {
+//                case "$constants" =>
+//                  val (default, map) = parseRHS(rhs)
+//                  if (default.isDefined) {
+//                    rigidityDefaultExists = true
+//                  }
+//                  default match {
+//                    case Some("$rigid") => rigidityMap = rigidityMap.withDefaultValue(Rigid)
+//                    case Some("$flexible") => rigidityMap = rigidityMap.withDefaultValue(Flexible)
+//                    case None => // Do nothing, no default
+//                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
+//                  }
+//                  map foreach { case (name, rigidity) =>
+//                    rigidity match {
+//                      case "$rigid" => rigidityMap += (name -> Rigid)
+//                      case "$flexible" => rigidityMap += (name -> Flexible)
+//                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$rigidity'")
+//                    }
+//                  }
+//                case "$quantification" =>
+//                  val (default, map) = parseRHS(rhs)
+//                  default match {
+//                    case Some("$constant") => domainMap = domainMap.withDefaultValue(ConstantDomain)
+//                    case Some("$varying") => domainMap = domainMap.withDefaultValue(VaryingDomain)
+//                    case Some("$cumulative") => domainMap = domainMap.withDefaultValue(CumulativeDomain)
+//                    case Some("$decreasing") => domainMap = domainMap.withDefaultValue(DecreasingDomain)
+//                    case None => // Do nothing, no default
+//                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
+//                  }
+//                  map foreach { case (name, quantification) =>
+//                    quantification match {
+//                      case "$constant" => domainMap += (name -> ConstantDomain)
+//                      case "$varying" => domainMap += (name -> VaryingDomain)
+//                      case "$cumulative" => domainMap += (name -> CumulativeDomain)
+//                      case "$decreasing" => domainMap += (name -> DecreasingDomain)
+//                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
+//                    }
+//                  }
+//                case "$modalities" => val (default, map) = parseListRHS(rhs)
+//                  if (default.nonEmpty) {
+//                    modalDefaultExists = true
+//                    if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
+//                      modalsMap = modalsMap.withDefaultValue(default)
+//                    } else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[", ",", "]")}")
+//                  }
+//                  map foreach { case (lhs, modalspec) =>
+//                    val index0 = lhs match {
+//                      case THF.ConnectiveTerm(THF.NonclassicalBox(Some(index))) => index
+//                      case THF.ConnectiveTerm(THF.NonclassicalLongOperator(cname, Seq(Left(index))))
+//                        if Seq("$box", "$necessary", "$obligatory", "$knows").contains(cname) => index
+//                      case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
+//                    }
+//                    val index = escapeModalIndex(index0)
+//                    if (modalspec.nonEmpty) {
+//                      if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
+//                        //                        state(MODALS) += (index -> modalspec)
+//                        modalsMap = modalsMap + (index -> modalspec)
+//                      } else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[", ",", "]")}")
+//                    }
+//                  }
+                case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
+              }
+            case s => throw new EmbeddingException(s"Malformed logic specification entry: ${s.pretty}")
+          }
         case _ => throw new EmbeddingException(s"Malformed logic specification entry: ${spec.pretty}")
       }
     }

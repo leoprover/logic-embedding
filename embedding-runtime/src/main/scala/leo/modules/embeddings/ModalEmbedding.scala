@@ -6,7 +6,6 @@ import datastructures.TPTP
 import TPTP.{AnnotatedFormula, THF, THFAnnotated}
 
 import scala.annotation.unused
-import scala.collection.mutable
 
 object ModalEmbedding extends Embedding {
   object ModalEmbeddingOption extends Enumeration {
@@ -24,20 +23,8 @@ object ModalEmbedding extends Embedding {
   override final def name: String = "modal"
   override final def version: String = "2.0.1"
 
-  private[this] final val defaultConstantSpec = "$rigid"
-  private[this] final val defaultQuantificationSpec = "$constant"
-  private[this] final val defaultModalitiesSpec = "$modal_system_K"
-  override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated = {
-    import modules.input.TPTPParser.annotatedTHF
-    val spec: mutable.StringBuilder = new mutable.StringBuilder
-    spec.append("thf(logic_spec, logic, (")
-    spec.append("$modal == [")
-    spec.append("$constants == "); spec.append(specs.getOrElse("$constants", defaultConstantSpec)); spec.append(",")
-    spec.append("$quantification == "); spec.append(specs.getOrElse("$quantification", defaultQuantificationSpec)); spec.append(",")
-    spec.append("$modalities == "); spec.append(specs.getOrElse("$modalities", defaultModalitiesSpec))
-    spec.append("] )).")
-    annotatedTHF(spec.toString)
-  }
+  override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
+    generateTHFSpecification(name, Seq("$modalities", "$quantification", "$constants"), specs)
 
   override final def apply(problem: TPTP.Problem,
                   embeddingOptions: Set[ModalEmbeddingOption.Value]): TPTP.Problem =
@@ -52,16 +39,15 @@ object ModalEmbedding extends Embedding {
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class ModalEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[ModalEmbeddingOption.Value]) {
+  private[this] final class ModalEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[ModalEmbeddingOption.Value])
+    extends ModalEmbeddingLike {
+
     import ModalEmbeddingOption._
     import scala.collection.mutable
     ///////////////////////////////////////////////////////////////////
 
     // Semantics dimensions
     // (1) Rigid or flexible symbols
-    private[this] sealed abstract class Rigidity
-    private[this] final case object Rigid extends Rigidity
-    private[this] final case object Flexible extends Rigidity
     private[this] var rigidityMap: Map[String, Rigidity] = Map.empty
     private[this] var reverseSymbolTypeMap: Map[THF.Type, Set[String]] = Map.empty.withDefaultValue(Set.empty)
     private[this] var rigidityDefaultExists: Boolean = false
@@ -70,11 +56,6 @@ object ModalEmbedding extends Embedding {
     tptpDefinedFunctionSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
 
     // (2) Quantification semantics
-    private[this] sealed abstract class DomainType
-    private[this] final case object ConstantDomain extends DomainType
-    private[this] final case object VaryingDomain extends DomainType
-    private[this] final case object CumulativeDomain extends DomainType
-    private[this] final case object DecreasingDomain extends DomainType
     private[this] var domainMap: Map[String, DomainType] = Map.empty
     /* Initialize map: Everything with dollar (or dollar dollar) is interpreted, so it's contant domain. */
     domainMap += ("$o" -> ConstantDomain)
@@ -115,7 +96,7 @@ object ModalEmbedding extends Embedding {
       val result = sortFormulas ++ generatedMetaPreFormulas ++
         convertedTypeFormulas ++ generatedMetaPostFormulas ++
         convertedDefinitionFormulas ++ convertedOtherFormulas
-      val extraComments = generateExtraComments(result.headOption,
+      val extraComments = generateExtraComments(warnings.toSeq, result.headOption,
         sortFormulas.headOption, generatedMetaPreFormulas.headOption, convertedTypeFormulas.headOption,
         generatedMetaPostFormulas.headOption, convertedDefinitionFormulas.headOption, convertedOtherFormulas.headOption)
       val updatedComments = problem.formulaComments.concat(extraComments)
@@ -289,10 +270,6 @@ object ModalEmbedding extends Embedding {
 
         case THF.LetTerm(_, _, _) => // Treat new symbols like bound variables // TODO
           throw new EmbeddingException("TPTP let statements currently not supported. Aborting.")
-          /*val convertedTyping: Map[String, TPTP.THF.Type] = typing.map { case (name, ty) => (name, convertVariableType(ty)) }
-          val convertedBinding: Seq[(TPTP.THF.Formula, TPTP.THF.Formula)] = binding.map(a => (convertFormula(a._1, boundVars), convertFormula(a._2, boundVars)))
-          val convertedBody = convertFormula(body, boundVars)
-          THF.LetTerm(convertedTyping, convertedBinding, convertedBody)*/
         // TPTP special cases END
 
         /* Remaining cases are:
@@ -347,13 +324,7 @@ object ModalEmbedding extends Embedding {
       }
     }
 
-    private[this] def generateSafeName(boundVars: Map[String, THF.Type]): String = {
-      var proposedName: String = "W"
-      while (boundVars.contains(proposedName)) {
-        proposedName = proposedName.concat("W")
-      }
-      proposedName
-    }
+    @inline private[this] def generateSafeName(boundVars: Map[String, THF.Type]): String = generateFreshTPTPVariableName("W", boundVars.keySet)
 
     private def convertTypeFormula(formula: TPTP.THFAnnotated): AnnotatedFormula = {
       formula.formula match {
@@ -562,87 +533,9 @@ object ModalEmbedding extends Embedding {
       result.toSeq
     }
 
-    private[this] def generateExtraComments(maybeFirstFormula: Option[AnnotatedFormula],
-                                            maybeSortFormula: Option[AnnotatedFormula],
-                                            maybeMetaPreFormula: Option[AnnotatedFormula],
-                                            maybeTypeFormula: Option[AnnotatedFormula],
-                                            maybeMetaPostFormula: Option[AnnotatedFormula],
-                                            maybeDefinitionFormula: Option[AnnotatedFormula],
-                                            maybeRestFormula: Option[AnnotatedFormula]): Map[String, Seq[TPTP.Comment]] = {
-      var commentMap: Map[String, Seq[TPTP.Comment]] = Map.empty
-
-      // maybe add comments about warnings etc. in comments. If so, add them to very first formula in output.
-      if (warnings.nonEmpty) {
-        maybeFirstFormula match {
-          case Some(formula) => commentMap = commentMap + (formula.name -> warnings.toSeq.map(TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, _)))
-          case None =>
-        }
-      }
-      maybeSortFormula match {
-        case Some(formula) =>
-          val sortBlockComment = Map(formula.name -> Seq(
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% User types %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-          ))
-          commentMap = mergeMaps(commentMap, sortBlockComment)
-        case None =>
-      }
-      maybeMetaPreFormula match {
-        case Some(formula) =>
-          val metaPreBlockComment = Map(formula.name -> Seq(
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Meta-logical definitions of the embedding %%")
-          ))
-          commentMap = mergeMaps(commentMap, metaPreBlockComment)
-        case None =>
-      }
-      maybeTypeFormula match {
-        case Some(formula) =>
-          val typeBlockComment = Map(formula.name -> Seq(
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted user type declarations %%%%%%%%%%%")
-          ))
-          commentMap = mergeMaps(commentMap, typeBlockComment)
-        case None =>
-      }
-      maybeMetaPostFormula match {
-        case Some(formula) =>
-          val metaPostBlockComment = Map(formula.name -> Seq(
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Additional meta-logical definitions %%%%%%%%")
-          ))
-          commentMap = mergeMaps(commentMap, metaPostBlockComment)
-        case None =>
-      }
-      maybeDefinitionFormula match {
-        case Some(formula) =>
-          val definitionBlockComment = Map(formula.name -> Seq(
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted user definitions %%%%%%%%%%%%%%%%%")
-          ))
-          commentMap = mergeMaps(commentMap, definitionBlockComment)
-        case None =>
-      }
-      maybeRestFormula match {
-        case Some(formula) =>
-          val restBlockComment = Map(formula.name -> Seq(
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
-            TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted problem %%%%%%%%%%%%%%%%%%%%%%%%%%")
-          ))
-          commentMap = mergeMaps(commentMap, restBlockComment)
-        case None =>
-      }
-      commentMap
-    }
-
-    private[this] def mergeMaps[A, B](left: Map[A, Seq[B]], right: Map[A, Seq[B]]): Map[A, Seq[B]] = {
-      var result: Map[A, Seq[B]] = left
-      right.foreach { case (key, values) =>
-        val existingValues = result.getOrElse(key, Seq.empty)
-        result = result + (key -> (existingValues ++ values))
-      }
-      result
-    }
+    ///////////////////////////////////////////////////
+    // TPTP definitions relevant for the embedding
+    ///////////////////////////////////////////////////
 
     @inline private[this] def worldTypeName: String = "mworld"
     @inline private[this] def indexTypeName: String = "mindex"
@@ -660,21 +553,6 @@ object ModalEmbedding extends Embedding {
       import modules.input.TPTPParser.annotatedTHF
       val name = s"${unescapeTPTPName(index.pretty)}_decl"
       annotatedTHF(s"thf(${escapeName(name)}, type, ${index.pretty}: $indexTypeName).")
-    }
-
-    private[this] def unescapeTPTPName(name: String): String = {
-      if (name.startsWith("'") && name.endsWith("'")) {
-        name.tail.init
-      } else name
-    }
-    private def escapeName(name: String): String = {
-      val integerRegex = "^[+-]?[\\d]+$"
-      if (name.matches(integerRegex)) name else escapeAtomicWord(name)
-    }
-    private def escapeAtomicWord(word: String): String = {
-      val simpleLowerWordRegex = "^[a-z][a-zA-Z\\d_]*$"
-      if (word.matches(simpleLowerWordRegex)) word
-      else s"'${word.replace("\\","\\\\").replace("'", "\\'")}'"
     }
 
     private[this] def simpleAccessibilityRelationTPTPDef(): TPTP.AnnotatedFormula = {
@@ -1087,33 +965,6 @@ object ModalEmbedding extends Embedding {
       )
     }
 
-    private[this] def isModalAxiomName(name: String): Boolean = name.startsWith("$modal_axiom_")
-    private[this] def isModalSystemName(name: String): Boolean = name.startsWith("$modal_system_")
-    private[this] lazy val modalSystemTable: Map[String, Seq[String]] = Map(
-      "$modal_system_K" -> Seq("$modal_axiom_K"),
-      "$modal_system_K4" -> Seq("$modal_axiom_K", "$modal_axiom_4"),
-      "$modal_system_K5" -> Seq("$modal_axiom_K", "$modal_axiom_5"),
-      "$modal_system_KB" -> Seq("$modal_axiom_K", "$modal_axiom_B"),
-      "$modal_system_K45" -> Seq("$modal_axiom_K", "$modal_axiom_4", "$modal_axiom_5"),
-      "$modal_system_KB5" -> Seq("$modal_axiom_K", "$modal_axiom_B", "$modal_axiom_5"),
-      "$modal_system_D" -> Seq("$modal_axiom_K", "$modal_axiom_D"),
-      "$modal_system_D4" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_4"),
-      "$modal_system_D5" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_5"),
-      "$modal_system_D45" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_4", "$modal_axiom_5"),
-      "$modal_system_DB" -> Seq("$modal_axiom_K", "$modal_axiom_D", "$modal_axiom_B"),
-      "$modal_system_T" -> Seq("$modal_axiom_K", "$modal_axiom_T"),
-      "$modal_system_M" -> Seq("$modal_axiom_K", "$modal_axiom_T"),
-      "$modal_system_B" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_B"),
-      "$modal_system_S4" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4"),
-      "$modal_system_S5" -> Seq("$modal_axiom_K", "$modal_axiom_S5U"),
-      "$modal_system_K4W" -> Seq("$modal_axiom_K", "$modal_axiom_GL"),
-      "$modal_system_4_1" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_H"),
-      "$modal_system_4_2" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_M"),
-      "$modal_system_4_3" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4" ,"$modal_axiom_G"),
-      "$modal_system_Grz" -> Seq("$modal_axiom_K", "$modal_axiom_Grz"),
-      "$modal_system_GL" -> Seq("$modal_axiom_K", "$modal_axiom_GL")
-    )
-
     //////////////////////////////////////////////////////////////////////
     // Logic specification parsing
     //////////////////////////////////////////////////////////////////////
@@ -1177,7 +1028,6 @@ object ModalEmbedding extends Embedding {
                     val index = escapeModalIndex(index0)
                     if (modalspec.nonEmpty) {
                       if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
-//                        state(MODALS) += (index -> modalspec)
                         modalsMap = modalsMap + (index -> modalspec)
                       } else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[",",", "]")}")
                     }

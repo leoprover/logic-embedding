@@ -40,6 +40,16 @@ package object embeddings {
 
   @inline final def str2Fun(functionName: String): TPTP.THF.Formula = TPTP.THF.FunctionTerm(functionName, Seq.empty)
 
+  final def generateFreshTPTPVariableName(startName: String, disallowedNames: Set[String]): String = {
+    if (disallowedNames.contains(startName)) {
+      var counter: Int = 0
+      while (disallowedNames.contains(s"$startName$counter")) {
+        counter = counter + 1
+      }
+      s"$startName$counter"
+    } else startName
+  }
+
   final def unescapeTPTPName(name: String): String = {
     if (name.startsWith("'") && name.endsWith("'")) {
       name.tail.init
@@ -169,6 +179,19 @@ package object embeddings {
     }
   }
 
+  final def generateTHFSpecification(logicName: String, parameter: Seq[String], specs: Map[String, String]): TPTP.THFAnnotated = {
+    import collection.mutable
+    val entries: mutable.Buffer[THF.Formula] = mutable.Buffer.empty
+    parameter.foreach { param =>
+      if (specs.isDefinedAt(param))
+        entries.append(THF.BinaryFormula(THF.==, THF.FunctionTerm(param, Seq.empty), THF.FunctionTerm(specs(param), Seq.empty)))
+    }
+    if (entries.isEmpty)
+      THFAnnotated("generated_spec", "logic", THF.Logical(THF.FunctionTerm(logicName, Seq.empty)), None)
+    else
+      THFAnnotated("generated_spec", "logic", THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(logicName, Seq.empty), THF.Tuple(entries.toSeq))), None)
+  }
+
   /////////// TFF specific split
   protected[embeddings] final def splitTFFInput(input: Seq[AnnotatedFormula]): (TFFAnnotated, Seq[TFFAnnotated]) = {
     import collection.mutable
@@ -233,7 +256,21 @@ package object embeddings {
       } else logicSpec.head
       (spec, sortDecls.toSeq, typeDecls.toSeq, defDecls.toSeq, remainingFormulas.toSeq)
     }
+  }
 
+  final def generateTFFSpecification(logicName: String, parameter: Seq[String], specs: Map[String, String]): TPTP.TFFAnnotated = {
+    import collection.mutable
+    val entries: mutable.Buffer[TFF.Term] = mutable.Buffer.empty
+    parameter.foreach { param =>
+      if (specs.isDefinedAt(param)) {
+        entries.append(TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(param, Seq.empty),
+                                                        TFF.AtomicTerm(specs(param), Seq.empty))))
+      }
+    }
+    if (entries.isEmpty)
+      TFFAnnotated("generated_spec", "logic", TFF.Logical(TFF.AtomicFormula(logicName, Seq.empty)), None)
+    else
+      TFFAnnotated("generated_spec", "logic", TFF.Logical(TFF.MetaIdentity(TFF.AtomicTerm(logicName, Seq.empty), TFF.Tuple(entries.toSeq))), None)
   }
 
   protected[embeddings] final def splitInput(input: Seq[AnnotatedFormula]): (AnnotatedFormula, Seq[AnnotatedFormula]) = {
@@ -348,5 +385,88 @@ package object embeddings {
       case e => default = default :+ e
     }
     (default, mapping)
+  }
+
+  final def generateExtraComments(warnings: Seq[String],
+                                  maybeFirstFormula: Option[AnnotatedFormula],
+                                  maybeSortFormula: Option[AnnotatedFormula],
+                                  maybeMetaPreFormula: Option[AnnotatedFormula],
+                                  maybeTypeFormula: Option[AnnotatedFormula],
+                                  maybeMetaPostFormula: Option[AnnotatedFormula],
+                                  maybeDefinitionFormula: Option[AnnotatedFormula],
+                                  maybeRestFormula: Option[AnnotatedFormula]): Map[String, Seq[TPTP.Comment]] = {
+    var commentMap: Map[String, Seq[TPTP.Comment]] = Map.empty
+
+    // maybe add comments about warnings etc. in comments. If so, add them to very first formula in output.
+    if (warnings.nonEmpty) {
+      maybeFirstFormula match {
+        case Some(formula) => commentMap = commentMap + (formula.name -> warnings.map(TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, _)))
+        case None =>
+      }
+    }
+    maybeSortFormula match {
+      case Some(formula) =>
+        val sortBlockComment = Map(formula.name -> Seq(
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% User types %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        ))
+        commentMap = mergeMaps(commentMap, sortBlockComment)
+      case None =>
+    }
+    maybeMetaPreFormula match {
+      case Some(formula) =>
+        val metaPreBlockComment = Map(formula.name -> Seq(
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Meta-logical definitions of the embedding %%")
+        ))
+        commentMap = mergeMaps(commentMap, metaPreBlockComment)
+      case None =>
+    }
+    maybeTypeFormula match {
+      case Some(formula) =>
+        val typeBlockComment = Map(formula.name -> Seq(
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted user type declarations %%%%%%%%%%%")
+        ))
+        commentMap = mergeMaps(commentMap, typeBlockComment)
+      case None =>
+    }
+    maybeMetaPostFormula match {
+      case Some(formula) =>
+        val metaPostBlockComment = Map(formula.name -> Seq(
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Additional meta-logical definitions %%%%%%%%")
+        ))
+        commentMap = mergeMaps(commentMap, metaPostBlockComment)
+      case None =>
+    }
+    maybeDefinitionFormula match {
+      case Some(formula) =>
+        val definitionBlockComment = Map(formula.name -> Seq(
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted user definitions %%%%%%%%%%%%%%%%%")
+        ))
+        commentMap = mergeMaps(commentMap, definitionBlockComment)
+      case None =>
+    }
+    maybeRestFormula match {
+      case Some(formula) =>
+        val restBlockComment = Map(formula.name -> Seq(
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"),
+          TPTP.Comment(TPTP.Comment.CommentFormat.LINE, TPTP.Comment.CommentType.NORMAL, "%% Converted problem %%%%%%%%%%%%%%%%%%%%%%%%%%")
+        ))
+        commentMap = mergeMaps(commentMap, restBlockComment)
+      case None =>
+    }
+    commentMap
+  }
+
+  private[this] def mergeMaps[A, B](left: Map[A, Seq[B]], right: Map[A, Seq[B]]): Map[A, Seq[B]] = {
+    var result: Map[A, Seq[B]] = left
+    right.foreach { case (key, values) =>
+      val existingValues = result.getOrElse(key, Seq.empty)
+      result = result + (key -> (existingValues ++ values))
+    }
+    result
   }
 }
