@@ -94,11 +94,7 @@ object TermModalEmbedding extends Embedding {
     }
     private[this] val functionGoalTypes: mutable.Map[String, TFF.Type] = mutable.Map.empty // actually, also predicate symbols
     private[this] val functionArgumentTypes: mutable.Map[String, Seq[THF.Type]] = mutable.Map.empty // strictly function symbols
-    private[this] def argumentTypesAndGoalTypeOfType(ty: TFF.Type): (Seq[TFF.Type], TFF.Type) = ty match {
-      case TFF.AtomicType(_, _) => (Seq.empty, ty)
-      case TFF.MappingType(left, right) => (left, right)
-      case _ => throw new EmbeddingException(s"Unexpected error in argumentAndGoalTypeOfType(ty = ${ty.pretty}).")
-    }
+
     private[this] def getGoalTypeOfTerm(term: TFF.Term, boundVars: Map[String, TFF.Type]): TFF.Type = term match {
       case TFF.AtomicTerm(f, _) => functionGoalTypes(f)
       case TFF.Variable(name) => boundVars.get(name) match {
@@ -147,7 +143,7 @@ object TermModalEmbedding extends Embedding {
 
     private def convertTypeFormula(input: TFFAnnotated): THFAnnotated = input.formula match {
       case TFF.Typing(atom, typ) =>
-        val (argTypes, goalTy) = argumentTypesAndGoalTypeOfType(typ)
+        val (argTypes, goalTy) = argumentTypesAndGoalTypeOfTFFType(typ)
         functionGoalTypes += (atom -> goalTy) // Document for type reconstruction in modal operators. Maybe shift to THF types later.
         goalTy match {
           case TFF.AtomicType("$o", _) => () // ignore this case, predicates are not important for function symbol collection

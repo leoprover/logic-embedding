@@ -1109,7 +1109,7 @@ object HybridLogicEmbedding extends Embedding {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
                 case "$constants" =>
-                  val (default, map) = parseRHS(rhs)
+                  val (default, map) = parseTHFSpecRHS(rhs)
                   default match {
                     case Some("$rigid") => state.setDefault(RIGIDITY, RIGIDITY_RIGID)
                     case Some("$flexible") => state.setDefault(RIGIDITY, RIGIDITY_FLEXIBLE)
@@ -1126,7 +1126,7 @@ object HybridLogicEmbedding extends Embedding {
                     }
                   }
                 case "$quantification" =>
-                  val (default, map) = parseRHS(rhs)
+                  val (default, map) = parseTHFSpecRHS(rhs)
                   default match {
                     case Some("$constant") => state.setDefault(DOMAIN, DOMAIN_CONSTANT)
                     case Some("$varying") => state.setDefault(DOMAIN, DOMAIN_VARYING)
@@ -1144,7 +1144,7 @@ object HybridLogicEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$modalities" => val (default, map) = parseListRHS(rhs)
+                case "$modalities" => val (default, map) = parseTHFListSpecRHS(rhs)
                   if (default.nonEmpty) state.setDefault(MODALS, default)
                   map foreach { case (name, modalspec) =>
                     val realIndex = name match {

@@ -977,7 +977,7 @@ object ModalEmbedding extends Embedding {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
                 case "$constants" =>
-                  val (default, map) = parseRHS(rhs)
+                  val (default, map) = parseTHFSpecRHS(rhs)
                   if (default.isDefined) { rigidityDefaultExists = true }
                   default match {
                     case Some("$rigid") => rigidityMap = rigidityMap.withDefaultValue(Rigid)
@@ -993,7 +993,7 @@ object ModalEmbedding extends Embedding {
                     }
                   }
                 case "$quantification" =>
-                  val (default, map) = parseRHS(rhs)
+                  val (default, map) = parseTHFSpecRHS(rhs)
                   default match {
                     case Some("$constant") => domainMap = domainMap.withDefaultValue(ConstantDomain)
                     case Some("$varying") => domainMap = domainMap.withDefaultValue(VaryingDomain)
@@ -1011,7 +1011,7 @@ object ModalEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$modalities" => val (default, map) = parseListRHS(rhs)
+                case "$modalities" => val (default, map) = parseTHFListSpecRHS(rhs)
                   if (default.nonEmpty) {
                     modalDefaultExists = true
                     if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
