@@ -59,7 +59,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     domainMap += ("$real" -> ConstantDomain) // TODO: Rework in ... "if starts with dollar, then constant domain"
 
     // (3) Modal operator properties, for now as string
-    private[this] var modalsMap: Map[TFF.Formula, Seq[String]] = Map.empty
+    private[this] var modalsMap: Map[TFF.Term, Seq[String]] = Map.empty
     private[this] var modalDefaultExists: Boolean = false
     ////////////////////////////////////////////////////////////////////
     // Embedding options
@@ -88,7 +88,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     @inline private[this] def worldType: TFF.Type = TFF.AtomicType(worldTypeName, Seq.empty)
     @inline private[this] val accessibilityRelationName: String = "'$ki_accessible'"
     @inline private[this] val localWorldName: String = "'$ki_local_world'"
-    @inline private[this] def localWorldVariableName: String = "LOCALWORLD"
+    @inline private[this] def localWorldVariableName: String = "W"
     @inline private[this] def localWorldConstant: TFF.Term = TFF.AtomicTerm(localWorldName, Seq.empty)
     @inline private[this] def localWorldVariable: TFF.Term = TFF.Variable(localWorldVariableName)
     @inline private[this] val indexTypeName: String = "'$ki_index'"
@@ -110,12 +110,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     }
 
     private def isMultiModal: Boolean = { indexValues.nonEmpty }
+    private[this] var isS5 = false // True iff mono-modal and modality is S5
 
-    private[this] def argumentTypesAndGoalTypeOfType(ty: TFF.Type): (Seq[TFF.Type], TFF.Type) = ty match {
-      case TFF.AtomicType(_, _) => (Seq.empty, ty)
-      case TFF.MappingType(left, right) => (left, right)
-      case _ => throw new EmbeddingException(s"Unexpected error in argumentAndGoalTypeOfType(ty = ${ty.pretty}).")
-    }
     private[this] def escapeType(ty: TFF.Type): TFF.Type = {
       ty match {
         case TFF.AtomicType("$ki_world", Seq()) => worldType
@@ -132,11 +128,12 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       input.formula match {
         case TFF.Typing(atom, typ) =>
           val escapedTyp = escapeType(typ)
-          val (argTypes, goalTy) = argumentTypesAndGoalTypeOfType(escapedTyp)
+          val (argTypes, goalTy) = argumentTypesAndGoalTypeOfTFFType(escapedTyp)
           val convertedType = goalTy match {
             case o@TFF.AtomicType("$o", _) => TFF.MappingType(worldType +: argTypes, o)
             case _ => escapedTyp
           }
+          reverseSymbolTypeMap = reverseSymbolTypeMap + (convertedType -> (reverseSymbolTypeMap(convertedType) + atom))
           TFFAnnotated(input.name, input.role, TFF.Typing(atom, convertedType), input.annotations)
         case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
       }
@@ -196,6 +193,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       }
     }
 
+
+    // Interpretation formulas are interpreted specially (like hybrid logic, specifically on worlds).
     private[this] def convertInterpretationFormula(formula: TFF.Formula): TFF.Formula = {
       formula match {
         case TFF.AtomicFormula("$ki_accessible", Seq(w, v)) => TFF.AtomicFormula(accessibilityRelationName, Seq(w, v))
@@ -222,15 +221,11 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       }
     }
 
+    // Non-interpretation formulas are embedded as usual
     private[this] def convertFormula(formula: TFF.Formula, worldPlaceholder: TFF.Term): TFF.Formula =
       convertFormula(formula, worldPlaceholder, Set.empty)
     private[this] def convertFormula(formula: TFF.Formula, worldPlaceholder: TFF.Term, boundVars: Set[String]): TFF.Formula = {
       formula match {
-        /* special cases */
-//        case TFF.AtomicFormula("$accessible_ki_world", Seq(w,v)) => TFF.AtomicFormula(accessibilityRelationName, Seq(w, v))
-//        case TFF.AtomicFormula("$in_ki_world", Seq(world, TFF.FormulaTerm(worldFormula))) =>
-//          convertFormula(worldFormula, worldPlaceholder =  world, boundVars)
-        /* special cases END */
         case TFF.AtomicFormula(f, args) => if (f.startsWith("$") || f.startsWith("$$")) formula else TFF.AtomicFormula(f, worldPlaceholder +: args)
         case TFF.UnaryFormula(connective, body) => TFF.UnaryFormula(connective, convertFormula(body, worldPlaceholder, boundVars))
         case TFF.BinaryFormula(connective, left, right) => TFF.BinaryFormula(connective,
@@ -282,7 +277,10 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       }
     }
 
-    private[this] def convertBoxModality(body: TFF.Formula, boundVars: Set[String], world: TFF.Term, index: Option[TFF.Term]): TFF.Formula = {
+    private[this] sealed abstract class BoxOrDiamond
+    private[this] final object Box extends BoxOrDiamond
+    private[this] final object Diamond extends BoxOrDiamond
+    private[this] def convertModality(modality: BoxOrDiamond, body: TFF.Formula, boundVars: Set[String], world: TFF.Term, index: Option[TFF.Term]): TFF.Formula = {
       val newWorldVariableName = generateFreshWorldVariable(boundVars)
       val newWorldVariable: TFF.Term = TFF.Variable(newWorldVariableName)
       val convertedBody0 = convertFormula(body, newWorldVariable)
@@ -294,25 +292,19 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           multimodal(escapedIndex)
           TFF.AtomicFormula(accessibilityRelationName, Seq(escapedIndex, world, newWorldVariable))
       }
-      val convertedBody = TFF.BinaryFormula(TFF.Impl, convertedAccessibilityRelation, convertedBody0)
-      TFF.QuantifiedFormula(TFF.!, Seq((newWorldVariableName, Some(worldType))), convertedBody)
-    }
-
-    private[this] def convertDiaModality(body: TFF.Formula, boundVars: Set[String], world: TFF.Term, index: Option[TFF.Term]): TFF.Formula = {
-      val newWorldVariableName = generateFreshWorldVariable(boundVars)
-      val newWorldVariable: TFF.Term = TFF.Variable(newWorldVariableName)
-      val convertedBody0 = convertFormula(body, newWorldVariable)
-      val convertedAccessibilityRelation: TFF.Formula = index match {
-        case None =>
-          TFF.AtomicFormula(accessibilityRelationName, Seq(world, newWorldVariable))
-        case Some(idx) =>
-          val escapedIndex = escapeIndex(idx)
-          multimodal(escapedIndex)
-          TFF.AtomicFormula(accessibilityRelationName, Seq(escapedIndex, world, newWorldVariable))
+      modality match {
+        case Box =>
+          val convertedBody = TFF.BinaryFormula(TFF.Impl, convertedAccessibilityRelation, convertedBody0)
+          TFF.QuantifiedFormula(TFF.!, Seq((newWorldVariableName, Some(worldType))), convertedBody)
+        case Diamond =>
+          val convertedBody = TFF.BinaryFormula(TFF.&, convertedAccessibilityRelation, convertedBody0)
+          TFF.QuantifiedFormula(TFF.?, Seq((newWorldVariableName, Some(worldType))), convertedBody)
       }
-      val convertedBody = TFF.BinaryFormula(TFF.&, convertedAccessibilityRelation, convertedBody0)
-      TFF.QuantifiedFormula(TFF.?, Seq((newWorldVariableName, Some(worldType))), convertedBody)
     }
+    @inline private[this] def convertBoxModality(body: TFF.Formula, boundVars: Set[String], world: TFF.Term, index: Option[TFF.Term]): TFF.Formula =
+      convertModality(Box, body, boundVars, world, index)
+    @inline private[this] def convertDiaModality(body: TFF.Formula, boundVars: Set[String], world: TFF.Term, index: Option[TFF.Term]): TFF.Formula =
+      convertModality(Diamond, body, boundVars, world, index)
 
     private[this] def generateFreshWorldVariable(boundVars: Set[String]): String = generateFreshTPTPVariableName(localWorldVariableName, boundVars)
 
@@ -338,7 +330,6 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     /* All the meta formulas that move BEFORE user-type definitions. */
     private def generateMetaPreFormulas(): Seq[TPTP.AnnotatedFormula] = {
       import scala.collection.mutable
-
       val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
 
       // Introduce world type and current world
@@ -346,15 +337,39 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       result.append(localWorldTPTPDef())
       // Introduce type of index values and index typings (if applicable)
       if (isMultiModal) {
-        result.append(multiModalAccessbilityRelationTPTPDef())
         result.append(indexTypeTPTPDef())
+        result.append(multiModalAccessbilityRelationTPTPDef())
         indexValues foreach { term =>
           result.append(indexTPTPDef(term))
         }
       } else {
         result.append(accessbilityRelationTPTPDef())
       }
-
+      // Specify properties on accessibility relation
+      if (isMultiModal) {
+        indexValues foreach { term =>
+          val modalSystem = modalsMap.get(term) match {
+            case Some(value) => value
+            case None => if (modalDefaultExists) modalsMap.default(term) else throw new EmbeddingException(s"Modal properties for index '${term.pretty}' not defined; and no default properties specified. Aborting.")
+          }
+          val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
+          axiomNames foreach { ax =>
+            val axiom = axiomTable(Some(term))(ax)
+            axiom.foreach { result.append }
+          }
+        }
+      } else {
+        val modalSystemOrAxiomNameList = if (modalDefaultExists) modalsMap.default(TFF.AtomicTerm("*dummy*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
+        val axiomNames = if (isModalSystemName(modalSystemOrAxiomNameList.head)) {
+          val systemName = modalSystemOrAxiomNameList.head
+          if (systemName == "$modal_system_S5") {
+            isS5 = true
+          }
+          modalSystemTable(modalSystemOrAxiomNameList.head)
+        } else modalSystemOrAxiomNameList
+        val modalAxioms = axiomNames.flatMap(axiomTable(None)).toSet
+        result.appendAll(modalAxioms)
+      }
       result.toSeq
     }
 
@@ -363,9 +378,23 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
 
       val result: mutable.Buffer[TPTP.AnnotatedFormula] = mutable.Buffer.empty
 
-      quantifierTypes.foreach { ty =>
-        result.append(existsInWorldPredicateTPTPDef(ty))
+      // define exists-in-world-predicate
+      if (polymorphic) {
+        if (quantifierTypes.nonEmpty) result.append(existsInWorldPredicatePolyTPTPDef())
+      } else {
+        quantifierTypes.foreach { ty =>
+          result.append(existsInWorldPredicateTPTPDef(ty))
+        }
       }
+      quantifierTypes.foreach { ty =>
+        domainMap(ty) match {
+          case ConstantDomain => result.appendAll(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
+          case CumulativeDomain => result.appendAll(cumulativeExistsInWorldTPTPDef(poly = polymorphic, ty))
+          case DecreasingDomain => result.appendAll(decreasingExistsInWorldTPTPDef(poly = polymorphic, ty))
+          case VaryingDomain => /* nothing */
+        }
+      }
+      // TODO: Specify properties on eiw
 
       result.toSeq
     }
@@ -406,6 +435,60 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       annotatedTFF(s"tff(${escapeName(name)}, type, $eiwPredicateName: ($worldTypeName * $ty) > $$o).")
     }
 
+    private[this] def existsInWorldPredicatePolyTPTPDef(): TPTP.AnnotatedFormula = {
+      val name = s"${unescapeTPTPName(existencePredicateName)}_decl"
+      annotatedTFF(s"tff(${escapeName(name)}, type, $existencePredicateName: !>[T:$$tType]: (($worldTypeName * T) > $$o) ).")
+    }
+
+    private[this] def constantExistsInWorldTPTPDef(poly: Boolean, ty: String): TPTP.AnnotatedFormula = {
+      import modules.input.TPTPParser.annotatedTFF
+      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty}_const"
+      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, X:$ty]: ( $existencePredicateName($ty,W,X) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, X:$ty]: ( ${existencePredicateNameForType(ty)}($ty,W,X) )).")
+    }
+
+    private[this] def axiomTable(index: Option[TFF.Term])(axiom: String): Option[TFFAnnotated] = {
+      import modules.input.TPTPParser.annotatedTFF
+      def accRel(left: String, right: String): String = index match {
+        case Some(idx) => s"$accessibilityRelationName(${idx.pretty}, left, $right)"
+        case None => s"$accessibilityRelationName($left, $right)"
+      }
+      def augmentName(basename: String): String = index match {
+        case Some(idx) => escapeName(s"${unescapeTPTPName(basename)}_${unescapeTPTPName(idx.pretty)}")
+        case None => basename
+      }
+      axiom match {
+        case "$modal_axiom_K" => None
+        case "$modal_axiom_T" | "$modal_axiom_M" => Some(
+          annotatedTFF(
+            s"tff(${augmentName("mrel_reflexive")}, axiom, ![W:$worldTypeName]: (${accRel("W","W")}))."
+          )
+        )
+        case "$modal_axiom_B" => Some(annotatedTFF(
+          s"tff(${augmentName("mrel_symmetric")}, axiom, ![W:$worldTypeName, V:$worldTypeName]: ((${accRel("W", "V")}) => (${accRel("V", "W")})))."
+        ))
+        case "$modal_axiom_D" => Some(annotatedTFF(
+          s"tff(${augmentName("mrel_serial")}, axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (${accRel("W", "V")}))."
+        ))
+        case "$modal_axiom_4" => Some(annotatedTFF(
+          s"tff(${augmentName("mrel_transitive")}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel("W", "V")}) & (${accRel("V", "U")})) => (${accRel("W", "U")})))."
+        ))
+        case "$modal_axiom_5" => Some(annotatedTFF(
+          s"tff(${augmentName("mrel_euclidean")}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel("W","U")}) & (${accRel("W","V")})) => (${accRel("U","V")})))."
+        ))
+        case "$modal_axiom_C4" => Some(annotatedTFF(
+          s"tff(${augmentName("mrel_dense")}, axiom, ![W:$worldTypeName,U:$worldTypeName]: ((${accRel("W","U")}) => (? [V:$worldTypeName]: ((${accRel("W","V")}) & (${accRel("V","U")})))))."
+        ))
+        case "$modal_axiom_CD" => Some(annotatedTFF(
+          s"tff(${augmentName("mrel_functional")}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel("W","U")}) & (${accRel("W","V")})) => (U = V)))."
+        ))
+        case "$modal_axiom_S5U" => Some(annotatedTFF(
+          s"tff(${augmentName("mrel_universal")}, axiom, ![W:$worldTypeName,V:$worldTypeName]: (${accRel("W","V")}))."
+        ))
+        case _ => throw new EmbeddingException(s"Unknown modal axiom name '$axiom'.")
+      }
+    }
+
     private[this] def createState(spec: TFFAnnotated): Unit = {
       spec.formula match {
         case TFF.Logical(TFF.AtomicFormula(`name`, Seq())) => ()
@@ -413,50 +496,52 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           spec0 foreach {
             case TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(propertyName, Seq()), rhs)) =>
               propertyName match {
-//                case "$constants" =>
-//                  val (default, map) = parseRHS(rhs)
-//                  if (default.isDefined) {
-//                    rigidityDefaultExists = true
-//                  }
-//                  default match {
-//                    case Some("$rigid") => rigidityMap = rigidityMap.withDefaultValue(Rigid)
-//                    case Some("$flexible") => rigidityMap = rigidityMap.withDefaultValue(Flexible)
-//                    case None => // Do nothing, no default
-//                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
-//                  }
-//                  map foreach { case (name, rigidity) =>
-//                    rigidity match {
-//                      case "$rigid" => rigidityMap += (name -> Rigid)
-//                      case "$flexible" => rigidityMap += (name -> Flexible)
-//                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$rigidity'")
-//                    }
-//                  }
-//                case "$quantification" =>
-//                  val (default, map) = parseRHS(rhs)
-//                  default match {
-//                    case Some("$constant") => domainMap = domainMap.withDefaultValue(ConstantDomain)
-//                    case Some("$varying") => domainMap = domainMap.withDefaultValue(VaryingDomain)
-//                    case Some("$cumulative") => domainMap = domainMap.withDefaultValue(CumulativeDomain)
-//                    case Some("$decreasing") => domainMap = domainMap.withDefaultValue(DecreasingDomain)
-//                    case None => // Do nothing, no default
-//                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
-//                  }
-//                  map foreach { case (name, quantification) =>
-//                    quantification match {
-//                      case "$constant" => domainMap += (name -> ConstantDomain)
-//                      case "$varying" => domainMap += (name -> VaryingDomain)
-//                      case "$cumulative" => domainMap += (name -> CumulativeDomain)
-//                      case "$decreasing" => domainMap += (name -> DecreasingDomain)
-//                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
-//                    }
-//                  }
-//                case "$modalities" => val (default, map) = parseListRHS(rhs)
-//                  if (default.nonEmpty) {
-//                    modalDefaultExists = true
-//                    if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
-//                      modalsMap = modalsMap.withDefaultValue(default)
-//                    } else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[", ",", "]")}")
-//                  }
+                case "$constants" =>
+                  val (default, map) = parseTFFSpecRHS(rhs)
+                  if (default.isDefined) {
+                    rigidityDefaultExists = true
+                  }
+                  default match {
+                    case Some("$rigid") => rigidityMap = rigidityMap.withDefaultValue(Rigid)
+                    case Some("$flexible") => rigidityMap = rigidityMap.withDefaultValue(Flexible)
+                    case None => // Do nothing, no default
+                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
+                  }
+                  map foreach { case (name, rigidity) =>
+                    rigidity match {
+                      case "$rigid" => rigidityMap += (name -> Rigid)
+                      case "$flexible" => rigidityMap += (name -> Flexible)
+                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$rigidity'")
+                    }
+                  }
+                case "$quantification" =>
+                  val (default, map) = parseTFFSpecRHS(rhs)
+                  default match {
+                    case Some("$constant") => domainMap = domainMap.withDefaultValue(ConstantDomain)
+                    case Some("$varying") => domainMap = domainMap.withDefaultValue(VaryingDomain)
+                    case Some("$cumulative") => domainMap = domainMap.withDefaultValue(CumulativeDomain)
+                    case Some("$decreasing") => domainMap = domainMap.withDefaultValue(DecreasingDomain)
+                    case None => // Do nothing, no default
+                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
+                  }
+                  map foreach { case (name, quantification) =>
+                    quantification match {
+                      case "$constant" => domainMap += (name -> ConstantDomain)
+                      case "$varying" => domainMap += (name -> VaryingDomain)
+                      case "$cumulative" => domainMap += (name -> CumulativeDomain)
+                      case "$decreasing" => domainMap += (name -> DecreasingDomain)
+                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
+                    }
+                  }
+                case "$modalities" => val (default, map) = parseTFFListSpecRHS(rhs)
+                  if (default.nonEmpty) {
+                    modalDefaultExists = true
+                    if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
+                      modalsMap = modalsMap.withDefaultValue(default)
+                    } else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[", ",", "]")}")
+                  }
+                // TODO: How to parse box-wise modality properties in NXF?
+                //
 //                  map foreach { case (lhs, modalspec) =>
 //                    val index0 = lhs match {
 //                      case THF.ConnectiveTerm(THF.NonclassicalBox(Some(index))) => index
@@ -467,7 +552,6 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
 //                    val index = escapeModalIndex(index0)
 //                    if (modalspec.nonEmpty) {
 //                      if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
-//                        //                        state(MODALS) += (index -> modalspec)
 //                        modalsMap = modalsMap + (index -> modalspec)
 //                      } else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[", ",", "]")}")
 //                    }
