@@ -111,6 +111,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
 
     private def isMultiModal: Boolean = { indexValues.nonEmpty }
     private[this] var isS5 = false // True iff mono-modal and modality is S5
+    private[this] var headless = true // True iff embedding is used for model verification only (i.e., modal logic parameters were not given in logic spec)
 
     private[this] def escapeType(ty: TFF.Type): TFF.Type = {
       ty match {
@@ -345,30 +346,34 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       } else {
         result.append(accessbilityRelationTPTPDef())
       }
-      // Specify properties on accessibility relation
-      if (isMultiModal) {
-        indexValues foreach { term =>
-          val modalSystem = modalsMap.get(term) match {
-            case Some(value) => value
-            case None => if (modalDefaultExists) modalsMap.default(term) else throw new EmbeddingException(s"Modal properties for index '${term.pretty}' not defined; and no default properties specified. Aborting.")
+      // Specify properties on accessibility relation if not headless
+      if (!headless) {
+        if (isMultiModal) {
+          indexValues foreach { term =>
+            val modalSystem = modalsMap.get(term) match {
+              case Some(value) => value
+              case None => if (modalDefaultExists) modalsMap.default(term) else throw new EmbeddingException(s"Modal properties for index '${term.pretty}' not defined; and no default properties specified. Aborting.")
+            }
+            val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
+            axiomNames foreach { ax =>
+              val axiom = axiomTable(Some(term))(ax)
+              axiom.foreach {
+                result.append
+              }
+            }
           }
-          val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
-          axiomNames foreach { ax =>
-            val axiom = axiomTable(Some(term))(ax)
-            axiom.foreach { result.append }
-          }
+        } else {
+          val modalSystemOrAxiomNameList = if (modalDefaultExists) modalsMap.default(TFF.AtomicTerm("*dummy*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
+          val axiomNames = if (isModalSystemName(modalSystemOrAxiomNameList.head)) {
+            val systemName = modalSystemOrAxiomNameList.head
+            if (systemName == "$modal_system_S5") {
+              isS5 = true
+            }
+            modalSystemTable(modalSystemOrAxiomNameList.head)
+          } else modalSystemOrAxiomNameList
+          val modalAxioms = axiomNames.flatMap(axiomTable(None)).toSet
+          result.appendAll(modalAxioms)
         }
-      } else {
-        val modalSystemOrAxiomNameList = if (modalDefaultExists) modalsMap.default(TFF.AtomicTerm("*dummy*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
-        val axiomNames = if (isModalSystemName(modalSystemOrAxiomNameList.head)) {
-          val systemName = modalSystemOrAxiomNameList.head
-          if (systemName == "$modal_system_S5") {
-            isS5 = true
-          }
-          modalSystemTable(modalSystemOrAxiomNameList.head)
-        } else modalSystemOrAxiomNameList
-        val modalAxioms = axiomNames.flatMap(axiomTable(None)).toSet
-        result.appendAll(modalAxioms)
       }
       result.toSeq
     }
@@ -386,15 +391,18 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           result.append(existsInWorldPredicateTPTPDef(ty))
         }
       }
-      quantifierTypes.foreach { ty =>
-        domainMap(ty) match {
-          case ConstantDomain => result.appendAll(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
-          case CumulativeDomain => result.appendAll(cumulativeExistsInWorldTPTPDef(poly = polymorphic, ty))
-          case DecreasingDomain => result.appendAll(decreasingExistsInWorldTPTPDef(poly = polymorphic, ty))
-          case VaryingDomain => /* nothing */
+      // Specify properties on eiw-predicate if required
+      if (!headless) {
+        quantifierTypes.foreach { ty =>
+          domainMap(ty) match { // FIXME: What's up the multi-modal eiw?
+            case ConstantDomain => result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
+            case CumulativeDomain => result.append(cumulativeExistsInWorldTPTPDef(poly = polymorphic, ty))
+            case DecreasingDomain => result.append(decreasingExistsInWorldTPTPDef(poly = polymorphic, ty))
+            case VaryingDomain => /* nothing */
+          }
         }
+        // TODO: Specify properties on eiw
       }
-      // TODO: Specify properties on eiw
 
       result.toSeq
     }
@@ -447,6 +455,20 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, X:$ty]: ( ${existencePredicateNameForType(ty)}($ty,W,X) )).")
     }
 
+    private[this] def cumulativeExistsInWorldTPTPDef(poly: Boolean, ty: String): TPTP.AnnotatedFormula = {
+      import modules.input.TPTPParser.annotatedTFF
+      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty}_cumul"
+      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty]: ( ($existencePredicateName($ty,W,X) & $accessibilityRelationName(W,V)) => $existencePredicateName($ty,V,X) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty]: ( (${existencePredicateNameForType(ty)}($ty,W,X) & $accessibilityRelationName(W,V)) => ${existencePredicateNameForType(ty)}($ty,V,X) )).")
+    }
+
+    private[this] def decreasingExistsInWorldTPTPDef(poly: Boolean, ty: String): TPTP.AnnotatedFormula = {
+      import modules.input.TPTPParser.annotatedTFF
+      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty}_decr"
+      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty]: ( ($existencePredicateName($ty,W,X) & $accessibilityRelationName(V,W)) => $existencePredicateName($ty,V,X) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty]: ( (${existencePredicateNameForType(ty)}($ty,W,X) & $accessibilityRelationName(V,W)) => ${existencePredicateNameForType(ty)}($ty,V,X) )).")
+    }
+
     private[this] def axiomTable(index: Option[TFF.Term])(axiom: String): Option[TFFAnnotated] = {
       import modules.input.TPTPParser.annotatedTFF
       def accRel(left: String, right: String): String = index match {
@@ -491,8 +513,10 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
 
     private[this] def createState(spec: TFFAnnotated): Unit = {
       spec.formula match {
-        case TFF.Logical(TFF.AtomicFormula(`name`, Seq())) => ()
+        case TFF.Logical(TFF.AtomicFormula(`name`, Seq())) =>
+          headless = true
         case TFF.Logical(TFF.MetaIdentity(TFF.AtomicTerm(`name`, Seq()), TFF.Tuple(spec0))) =>
+          headless = false
           spec0 foreach {
             case TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(propertyName, Seq()), rhs)) =>
               propertyName match {
