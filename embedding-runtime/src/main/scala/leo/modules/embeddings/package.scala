@@ -19,10 +19,13 @@ package object embeddings {
   /////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////
 
+  final val tptpInterpretedTypeNames: Seq[String] = Seq("$o", "$int", "$rat", "$real")
+
   final val tptpDefinedNullaryPredicateSymbols: Seq[String] = Seq("$true", "$false")
   final val tptpDefinedUnaryArithmeticPredicateSymbols: Seq[String] = Seq("$is_int", "$is_rat")
   final val tptpDefinedBinaryArithmeticPredicateSymbols: Seq[String] = Seq("$less", "$lesseq", "$greater", "$greatereq")
-  final val tptpDefinedPredicateSymbols: Seq[String] = tptpDefinedNullaryPredicateSymbols ++ tptpDefinedUnaryArithmeticPredicateSymbols ++ tptpDefinedBinaryArithmeticPredicateSymbols
+  final val tptpDefinedNAryPredicateSymbols: Seq[String] = Seq("$distinct")
+  final val tptpDefinedPredicateSymbols: Seq[String] = tptpDefinedNullaryPredicateSymbols ++ tptpDefinedUnaryArithmeticPredicateSymbols ++ tptpDefinedBinaryArithmeticPredicateSymbols ++ tptpDefinedNAryPredicateSymbols
 
   final val tptpDefinedUnaryArithmeticFunctionSymbols: Seq[String] = Seq("$uminus", "$floor", "$ceiling", "$truncate", "$round",
   "$is_int", "$is_rat", "$to_int", "$to_rat", "$to_real")
@@ -400,6 +403,7 @@ package object embeddings {
     case TFF.MappingType(left, right) => (left, right)
     case _ => throw new EmbeddingException(s"Unexpected error in argumentAndGoalTypeOfType(ty = ${ty.pretty}).")
   }
+  @inline final def stringToTFFType(name: String): TFF.Type = TFF.AtomicType(name, Seq.empty)
 
 
   type TFFLogicSpec = TFFAnnotated

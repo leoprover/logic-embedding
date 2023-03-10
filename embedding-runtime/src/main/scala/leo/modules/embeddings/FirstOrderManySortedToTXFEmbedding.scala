@@ -13,14 +13,13 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   object FOMLToTXFEmbeddingParameter extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
     //    type FOMLToTXFEmbeddingParameter = Value
-    @unused
-    final val MONOMORPHIC, POLYMORPHIC = Value
+    final val POLYMORPHIC, LOCALEXTENSION, EMPTYDOMAINS = Value
   }
   override type OptionType = FOMLToTXFEmbeddingParameter.type
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.1"
+  override final val version: String = "1.2"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, Seq("$modalities", "$quantification", "$constants") , specs)
@@ -51,19 +50,18 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     tptpDefinedFunctionSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
 
     // (2) Quantification semantics
-    private[this] var domainMap: Map[String, DomainType] = Map.empty
+    private[this] var domainMap: Map[TFF.Type, DomainType] = Map.empty
     /* Initialize map: Everything with dollar (or dollar dollar) is interpreted, so it's contant domain. */
-    domainMap += ("$o" -> ConstantDomain)
-    domainMap += ("$int" -> ConstantDomain)
-    domainMap += ("$rat" -> ConstantDomain)
-    domainMap += ("$real" -> ConstantDomain) // TODO: Rework in ... "if starts with dollar, then constant domain"
+    tptpInterpretedTypeNames.foreach { ty => domainMap += (stringToTFFType(ty) -> ConstantDomain) }
 
     // (3) Modal operator properties, for now as string
     private[this] var modalsMap: Map[TFF.Term, Seq[String]] = Map.empty
     private[this] var modalDefaultExists: Boolean = false
     ////////////////////////////////////////////////////////////////////
     // Embedding options
-    private val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
+    private[this] val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
+    private[this] val localExtension: Boolean = embeddingOptions.contains(LOCALEXTENSION) // default non-local extensions
+    private[this] val allowEmptyDomains: Boolean = embeddingOptions.contains(EMPTYDOMAINS) // default non-empty domains
     ////////////////////////////////////////////////////////////////////
 
     def apply(): TPTP.Problem = {
@@ -94,22 +92,24 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     @inline private[this] val indexTypeName: String = "'$ki_index'"
     @unused @inline private[this] def indexType: TFF.Type = TFF.AtomicType(indexTypeName, Seq.empty)
     @inline private[this] val existencePredicateName: String = "'$ki_exists_in_world'"
-    @inline private[this] def existencePredicateNameForType(ty: String): String = s"'${unescapeTPTPName(existencePredicateName)}_$ty'"
+    /* This only has to work for first-order types, so just pretty instead of encodeType: */
+    @inline private[this] def existencePredicateNameForType(ty: TFF.Type): String = s"'${unescapeTPTPName(existencePredicateName)}_${ty.pretty}'"
     private[this] val indexValues: collection.mutable.Set[TFF.Term] = collection.mutable.Set.empty
-    private def multimodal(idx: TFF.Term): Unit = {
+    @inline private[this] def multimodal(idx: TFF.Term): Unit = {
       indexValues.addOne(idx)
     }
-    /* It's only base type, as we are first-order: So use strings. */
-    private[this] val quantifierTypes: collection.mutable.Set[String] = collection.mutable.Set.empty
-    private def existencePredicate(typ: TFF.Type, worldPlaceholder: TFF.Term, variableName: String): TFF.Formula = {
-      val typName = typ match {
-        case TFF.AtomicType(name, _) => quantifierTypes.addOne(name); name
+    private[this] val quantifierTypes: collection.mutable.Set[TFF.Type] = collection.mutable.Set.empty
+    private[this] def existencePredicate(typ: TFF.Type, worldPlaceholder: TFF.Term, variableName: String): TFF.Formula = {
+      typ match {
+        case TFF.AtomicType(typName, _) =>
+          quantifierTypes.addOne(typ)
+          if (polymorphic) TFF.AtomicFormula(existencePredicateName, Seq(TFF.AtomicTerm(typName, Seq.empty), worldPlaceholder, TFF.Variable(variableName)))
+          else TFF.AtomicFormula(existencePredicateNameForType(typ), Seq(worldPlaceholder, TFF.Variable(variableName)))
         case _ => throw new EmbeddingException(s"Illegal quantification over non-atomic type '${typ.pretty}'.")
       }
-      TFF.AtomicFormula(existencePredicateNameForType(typName), Seq(worldPlaceholder, TFF.Variable(variableName)))
     }
 
-    private def isMultiModal: Boolean = { indexValues.nonEmpty }
+    private[this] def isMultiModal: Boolean = { indexValues.nonEmpty }
     private[this] var isS5 = false // True iff mono-modal and modality is S5
     private[this] var headless = true // True iff embedding is used for model verification only (i.e., modal logic parameters were not given in logic spec)
 
@@ -393,15 +393,35 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       }
       // Specify properties on eiw-predicate if required
       if (!headless) {
-        quantifierTypes.foreach { ty =>
-          domainMap(ty) match { // FIXME: What's up the multi-modal eiw?
-            case ConstantDomain => result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
-            case CumulativeDomain => result.append(cumulativeExistsInWorldTPTPDef(poly = polymorphic, ty))
-            case DecreasingDomain => result.append(decreasingExistsInWorldTPTPDef(poly = polymorphic, ty))
-            case VaryingDomain => /* nothing */
+        if (isS5) {
+          /* Special case: if it's S5 (and mono-modal), every domain is identical. So specify constant domain for every type. */
+          quantifierTypes.foreach { ty =>
+            result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
+          }
+        } else {
+          quantifierTypes.foreach { ty =>
+            domainMap(ty) match { // FIXME: What's up the multi-modal eiw?
+              case ConstantDomain => result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
+              case CumulativeDomain => result.append(cumulativeExistsInWorldTPTPDef(poly = polymorphic, ty))
+              case DecreasingDomain => result.append(decreasingExistsInWorldTPTPDef(poly = polymorphic, ty))
+              case VaryingDomain => /* nothing */
+            }
           }
         }
-        // TODO: Specify properties on eiw
+        if (!allowEmptyDomains && quantifierTypes.nonEmpty) {
+          quantifierTypes.foreach { ty =>
+            result.append(existsInWorldNonEmptyTPTPDef(poly = polymorphic, ty))
+          }
+        }
+        // Specify exist-in-world for constants if local extension
+        if (localExtension && quantifierTypes.nonEmpty) {
+          quantifierTypes.foreach { ty =>
+            val symbolsOfThatType = reverseSymbolTypeMap(ty)
+            symbolsOfThatType.foreach { sym =>
+              result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, ty, sym))
+            }
+          }
+        }
       }
 
       result.toSeq
@@ -437,10 +457,10 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       annotatedTFF(s"tff(${escapeName(name)}, type, $accessibilityRelationName: ($indexTypeName * $worldTypeName * $worldTypeName) > $$o).")
     }
 
-    private[this] def existsInWorldPredicateTPTPDef(ty: String): TPTP.AnnotatedFormula = {
+    private[this] def existsInWorldPredicateTPTPDef(ty: TFF.Type): TPTP.AnnotatedFormula = {
       val eiwPredicateName = existencePredicateNameForType(ty)
       val name = s"${unescapeTPTPName(eiwPredicateName)}_decl"
-      annotatedTFF(s"tff(${escapeName(name)}, type, $eiwPredicateName: ($worldTypeName * $ty) > $$o).")
+      annotatedTFF(s"tff(${escapeName(name)}, type, $eiwPredicateName: ($worldTypeName * ${ty.pretty}) > $$o).")
     }
 
     private[this] def existsInWorldPredicatePolyTPTPDef(): TPTP.AnnotatedFormula = {
@@ -448,25 +468,44 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       annotatedTFF(s"tff(${escapeName(name)}, type, $existencePredicateName: !>[T:$$tType]: (($worldTypeName * T) > $$o) ).")
     }
 
-    private[this] def constantExistsInWorldTPTPDef(poly: Boolean, ty: String): TPTP.AnnotatedFormula = {
+    private[this] def existsInWorldNonEmptyTPTPDef(poly: Boolean, ty: TPTP.TFF.Type): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTFF
-      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty}_const"
-      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, X:$ty]: ( $existencePredicateName($ty,W,X) )).")
-      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, X:$ty]: ( ${existencePredicateNameForType(ty)}($ty,W,X) )).")
+      val ty0 = ty.pretty
+      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_nonempty"
+      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ?[X:$ty0]: ( $existencePredicateName($ty0,W,X) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: : ?[X:$ty0]: ( ${existencePredicateNameForType(ty)}(W,X) )).")
     }
 
-    private[this] def cumulativeExistsInWorldTPTPDef(poly: Boolean, ty: String): TPTP.AnnotatedFormula = {
+    private[this] def constantExistsInWorldTPTPDef(poly: Boolean, ty: TFF.Type): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTFF
-      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty}_cumul"
-      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty]: ( ($existencePredicateName($ty,W,X) & $accessibilityRelationName(W,V)) => $existencePredicateName($ty,V,X) )).")
-      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty]: ( (${existencePredicateNameForType(ty)}($ty,W,X) & $accessibilityRelationName(W,V)) => ${existencePredicateNameForType(ty)}($ty,V,X) )).")
+      val ty0 = ty.pretty
+      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_const"
+      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, X:$ty0]: ( $existencePredicateName($ty0,W,X) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, X:$ty0]: ( ${existencePredicateNameForType(ty)}(W,X) )).")
     }
 
-    private[this] def decreasingExistsInWorldTPTPDef(poly: Boolean, ty: String): TPTP.AnnotatedFormula = {
+    private[this] def cumulativeExistsInWorldTPTPDef(poly: Boolean, ty: TFF.Type): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTFF
-      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty}_decr"
-      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty]: ( ($existencePredicateName($ty,W,X) & $accessibilityRelationName(V,W)) => $existencePredicateName($ty,V,X) )).")
-      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty]: ( (${existencePredicateNameForType(ty)}($ty,W,X) & $accessibilityRelationName(V,W)) => ${existencePredicateNameForType(ty)}($ty,V,X) )).")
+      val ty0 = ty.pretty
+      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_cumul"
+      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( ($existencePredicateName($ty0,W,X) & $accessibilityRelationName(W,V)) => $existencePredicateName($ty0,V,X) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( (${existencePredicateNameForType(ty)}(W,X) & $accessibilityRelationName(W,V)) => ${existencePredicateNameForType(ty)}(V,X) )).")
+    }
+
+    private[this] def decreasingExistsInWorldTPTPDef(poly: Boolean, ty: TFF.Type): TPTP.AnnotatedFormula = {
+      import modules.input.TPTPParser.annotatedTFF
+      val ty0 = ty.pretty
+      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_decr"
+      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( ($existencePredicateName($ty0,W,X) & $accessibilityRelationName(V,W)) => $existencePredicateName($ty0,V,X) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( (${existencePredicateNameForType(ty)}(W,X) & $accessibilityRelationName(V,W)) => ${existencePredicateNameForType(ty)}(V,X) )).")
+    }
+
+    private[this] def symbolExistsInAllWorldsTPTPDef(poly: Boolean, ty: TPTP.TFF.Type, symbol: String): TPTP.AnnotatedFormula = {
+      import modules.input.TPTPParser.annotatedTFF
+      val ty0 = ty.pretty
+      val name = s"${unescapeTPTPName(symbol)}_exists"
+      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ( $existencePredicateName($ty0,W,$symbol) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ( ${existencePredicateNameForType(ty)}(W,$symbol) )).")
     }
 
     private[this] def axiomTable(index: Option[TFF.Term])(axiom: String): Option[TFFAnnotated] = {
@@ -550,14 +589,14 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
                   }
                   map foreach { case (name, quantification) =>
                     quantification match {
-                      case "$constant" => domainMap += (name -> ConstantDomain)
-                      case "$varying" => domainMap += (name -> VaryingDomain)
-                      case "$cumulative" => domainMap += (name -> CumulativeDomain)
-                      case "$decreasing" => domainMap += (name -> DecreasingDomain)
+                      case "$constant" => domainMap += (stringToTFFType(name) -> ConstantDomain)
+                      case "$varying" => domainMap += (stringToTFFType(name) -> VaryingDomain)
+                      case "$cumulative" => domainMap += (stringToTFFType(name) -> CumulativeDomain)
+                      case "$decreasing" => domainMap += (stringToTFFType(name) -> DecreasingDomain)
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$modalities" => val (default, map) = parseTFFListSpecRHS(rhs)
+                case "$modalities" => val (default, _) = parseTFFListSpecRHS(rhs)
                   if (default.nonEmpty) {
                     modalDefaultExists = true
                     if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
