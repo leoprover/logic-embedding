@@ -256,18 +256,14 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           TFF.QuantifiedFormula(quantifier, variableList, convertedBody)
         case TFF.NonclassicalPolyaryFormula(connective, args) => args match {
           case Seq(body) => connective match {
-            case TFF.NonclassicalLongOperator(name, parameters) if Seq("$box", "$necessary").contains(name) =>
-              parameters match {
-                case Seq() => convertBoxModality(body, boundVars, world = worldPlaceholder, index = None)
-                case Seq(Left(idx)) => convertBoxModality(body, boundVars, world = worldPlaceholder, index = Some(idx))
-                case _ => throw new EmbeddingException(s"Illegal arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
-              }
-            case TFF.NonclassicalLongOperator(name, parameters) if Seq("$dia", "$possible").contains(name) =>
-              parameters match {
-                case Seq() => convertDiaModality(body, boundVars, world = worldPlaceholder, index = None)
-                case Seq(Left(idx)) => convertDiaModality(body, boundVars, world = worldPlaceholder, index = Some(idx))
-                case _ => throw new EmbeddingException(s"Illegal arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
-              }
+            case TFF.NonclassicalLongOperator(name, idx, parameters) if Seq("$box", "$necessary").contains(name) =>
+              if (parameters.nonEmpty) throw new EmbeddingException(s"Illegal arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
+              else convertBoxModality(body, boundVars, world = worldPlaceholder, index = idx)
+
+            case TFF.NonclassicalLongOperator(name, idx, parameters) if Seq("$dia", "$possible").contains(name) =>
+              if (parameters.nonEmpty) throw new EmbeddingException(s"Illegal arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
+              else convertDiaModality(body, boundVars, world = worldPlaceholder, index = idx)
+
             case TFF.NonclassicalBox(index) => convertBoxModality(body, boundVars, world = worldPlaceholder, index)
             case TFF.NonclassicalDiamond(index) => convertDiaModality(body, boundVars, world = worldPlaceholder, index)
             case _ => throw new EmbeddingException(s"Illegal connective '${connective.pretty}' in formula '${formula.pretty}'.")
@@ -284,7 +280,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     private[this] def convertModality(modality: BoxOrDiamond, body: TFF.Formula, boundVars: Set[String], world: TFF.Term, index: Option[TFF.Term]): TFF.Formula = {
       val newWorldVariableName = generateFreshWorldVariable(boundVars)
       val newWorldVariable: TFF.Term = TFF.Variable(newWorldVariableName)
-      val convertedBody0 = convertFormula(body, newWorldVariable)
+      val convertedBody0 = convertFormula(body, newWorldVariable, boundVars + newWorldVariableName )
       val convertedAccessibilityRelation: TFF.Formula = index match {
         case None =>
           TFF.AtomicFormula(accessibilityRelationName, Seq(world, newWorldVariable))
@@ -511,7 +507,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     private[this] def axiomTable(index: Option[TFF.Term])(axiom: String): Option[TFFAnnotated] = {
       import modules.input.TPTPParser.annotatedTFF
       def accRel(left: String, right: String): String = index match {
-        case Some(idx) => s"$accessibilityRelationName(${idx.pretty}, left, $right)"
+        case Some(idx) => s"$accessibilityRelationName(${idx.pretty}, $left, $right)"
         case None => s"$accessibilityRelationName($left, $right)"
       }
       def augmentName(basename: String): String = index match {

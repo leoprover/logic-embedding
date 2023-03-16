@@ -176,34 +176,79 @@ object HybridLogicEmbedding extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           thf(s"^[W:$worldTypeName]: ($f @ (${convertedLeft.pretty}) @ (${convertedRight.pretty}))")
 
-        // special case for nominals: we need to know the symbol after the operator :-(
-        case THF.BinaryFormula(App, THF.ConnectiveTerm(THF.NonclassicalLongOperator("$$nominal", Seq())), rhs@THF.FunctionTerm(nom, Seq())) =>
-          nominal(nom)
-          rhs
+        case THF.NonclassicalPolyaryFormula(connective, args) =>
+          connective match {
+            case THF.NonclassicalLongOperator(name, index, parameters) => name match {
+              case "$box" | "$necessary" | "$obligatory" | "$knows" =>
+                if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
+                val convertedConnective = index match {
+                  case Some(index0) => mboxIndexed(index0)
+                  case None => str2Fun("mbox")
+                }
+                val convertedArgs = args.map(convertFormula)
+                convertedArgs.foldLeft(convertedConnective)(THF.BinaryFormula(THF.App, _, _))
+              case "$dia" | "$possible" | "$permissible" =>
+                if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
+                val convertedConnective = index match {
+                  case Some(index0) => mdiaIndexed(index0)
+                  case None => str2Fun("mdia")
+                }
+                val convertedArgs = args.map(convertFormula)
+                convertedArgs.foldLeft(convertedConnective)(THF.BinaryFormula(THF.App, _, _))
+              case "$$nominal" =>
+                if (index.nonEmpty || parameters.nonEmpty) throw new EmbeddingException(s"Unexpected parameter to connective '$name' in ${connective.pretty} given.")
+                args match {
+                  case Seq(ft@THF.FunctionTerm(nom, Seq())) =>
+                    nominal(nom)
+                    ft
+                  case _ => throw new EmbeddingException(s"Unexpected argument to connective '$name' in ${formula.pretty} given.")
+                }
+              case "$$shift" =>
+                if (parameters.nonEmpty) throw new EmbeddingException(s"Unexpected parameter to connective '$name' in ${connective.pretty} given.")
+                val nterm = index match {
+                  case Some(t@THF.FunctionTerm(nom, _)) =>
+                    nominal(nom)
+                    t
+                  case Some(t@THF.Variable(_)) => t
+                  case None => throw new EmbeddingException(s"Mandatory parameter in ${connective.pretty} missing.")
+                }
+                args match {
+                  case Seq(body) => THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("mshift", Seq()), nterm), convertFormula(body))
+                  case _ => throw new EmbeddingException(s"Unexpected number of arguments to connective '$name' in ${formula.pretty} given.")
+                }
 
-        // special case for shifter operator @: we need to know the symbol after the operator :-(
-        case THF.BinaryFormula(App,
-            THF.ConnectiveTerm(THF.NonclassicalLongOperator("$$shift", Seq(Left(nterm@THF.FunctionTerm(nom, Seq()))))),
-            rhs
-          ) =>
-          nominal(nom)
-          THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("mshift", Seq()), nterm), convertFormula(rhs))
-
-        case THF.BinaryFormula(App,
-            THF.ConnectiveTerm(THF.NonclassicalLongOperator("$$shift", Seq(Left(nterm@THF.Variable(_))))),
-            rhs
-          ) =>
-          THF.BinaryFormula(App, THF.BinaryFormula(App, THF.FunctionTerm("mshift", Seq()), nterm), convertFormula(rhs))
-
-        // special case for shifter operator @: we need to know the symbol after the operator :-(
-        case THF.BinaryFormula(App,
-            THF.ConnectiveTerm(THF.NonclassicalLongOperator("$$bind", Seq(Left(THF.Variable(nvar))))),
-            rhs
-          ) =>
-          val convertedrhs = convertFormula(rhs)
-          val convertedBody = THF.QuantifiedFormula(THF.^, Seq((nvar, THF.BinaryFormula(THF.FunTyConstructor, THF.FunctionTerm(worldTypeName, Seq.empty), THF.FunctionTerm("$o", Seq.empty)))), convertedrhs)
-          THF.BinaryFormula(App, THF.FunctionTerm("mbind", Seq()), convertedBody)
-
+              case "$$bind" =>
+                if (parameters.nonEmpty) throw new EmbeddingException(s"Unexpected parameter to connective '$name' in ${connective.pretty} given.")
+                val nvar = index match {
+                  case Some(THF.Variable(variName)) => variName
+                  case _ => throw new EmbeddingException(s"Mandatory parameter in ${connective.pretty} missing.")
+                }
+                args match {
+                  case Seq(body) =>
+                    val convertedrhs = convertFormula(body)
+                    val convertedBody = THF.QuantifiedFormula(THF.^, Seq((nvar, THF.BinaryFormula(THF.FunTyConstructor, THF.FunctionTerm(worldTypeName, Seq.empty), THF.FunctionTerm("$o", Seq.empty)))), convertedrhs)
+                    THF.BinaryFormula(App, THF.FunctionTerm("mbind", Seq()), convertedBody)
+                  case _ => throw new EmbeddingException(s"Unexpected number of arguments to connective '$name' in ${formula.pretty} given.")
+                }
+              case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
+            }
+            case THF.NonclassicalBox(index) =>
+              val convertedConnective = index match {
+                case Some(index0) => mboxIndexed(index0)
+                case None => str2Fun("mbox")
+              }
+              val convertedArgs = args.map(convertFormula)
+              convertedArgs.foldLeft(convertedConnective)(THF.BinaryFormula(THF.App, _, _))
+            case THF.NonclassicalDiamond(index) =>
+              val convertedConnective = index match {
+                case Some(index0) => mdiaIndexed(index0)
+                case None => str2Fun("mdia")
+              }
+              val convertedArgs = args.map(convertFormula)
+              convertedArgs.foldLeft(convertedConnective)(THF.BinaryFormula(THF.App, _, _))
+            case _ => throw new EmbeddingException(s"Unsupported operator '${formula.pretty}'.")
+          }
+          
         /* ######################################### */
         /* Standard cases: Recurse embedding. */
         case THF.FunctionTerm(f, args) =>
@@ -273,37 +318,6 @@ object HybridLogicEmbedding extends Embedding {
         case THF.~& => str2Fun("mnand")
         case THF.| => str2Fun("mor")
         case THF.& => str2Fun("mand")
-        /// Non-classical connectives BEGIN
-        // Box operator
-        case THF.NonclassicalBox(index) => index match {
-          case Some(index0) => mboxIndexed(index0)
-          case None => str2Fun("mbox")
-        }
-        // Diamond operator
-        case THF.NonclassicalDiamond(index) => index match {
-          case Some(index0) => mdiaIndexed(index0)
-          case None => str2Fun("mdia")
-        }
-        case THF.NonclassicalLongOperator(name, parameters) =>
-          name match {
-            case "$box" | "$necessary" | "$obligatory" | "$knows" => parameters match {
-              case Seq() => str2Fun("mbox")
-              case Seq(Left(index0)) => mboxIndexed(index0)
-              case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case "$dia" | "$possible" | "$permissible" => parameters match {
-              case Seq() => str2Fun("mdia")
-              case Seq(Left(index0)) => mdiaIndexed(index0)
-              case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case "$$nominal" => parameters match {
-              case Seq() => str2Fun("mwexists")
-              case _ => throw new EmbeddingException(s"Unexpected argument to connective '$name' in ${connective.pretty} given.")
-            }
-            case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
-          }
-
-        /// Non-classical connectives END
         // Error cases
         case THF.Eq | THF.Neq => throw new EmbeddingException(s"Equality and inequality are not supported (due to inclarities with equality in modal logic). Please consider axiomatizing your own equality predicate in the problem.")
         case THF.App => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")

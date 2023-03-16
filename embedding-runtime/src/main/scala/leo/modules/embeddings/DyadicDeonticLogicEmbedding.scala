@@ -128,12 +128,40 @@ object DyadicDeonticLogicEmbedding extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           THF.BinaryFormula(App, convertedLeft, convertedRight)
 
-        /* The following case also subsumes where `connective` is a non-classical connective. */
         case THF.BinaryFormula(connective, left, right) =>
           val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           THF.BinaryFormula(App, THF.BinaryFormula(App, convertedConnective, convertedLeft), convertedRight)
+
+        case THF.NonclassicalPolyaryFormula(connective, args) =>
+          val convertedConnective = connective match {
+            case THF.NonclassicalBox(index) => index match {
+              case None => str2Fun(box)
+              case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
+            }
+            // Diamond operator
+            case THF.NonclassicalDiamond(index) => index match {
+              case None => str2Fun(dia)
+              case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
+            }
+            case THF.NonclassicalLongOperator(name, index, parameters) =>
+              if (index.isEmpty && parameters.isEmpty) {
+                name match {
+                  case `boxConnective` => str2Fun(box)
+                  case `actualBoxConnective` if ddlSystem == CarmoJones => str2Fun(actualbox)
+                  case `potentialBoxConnective` if ddlSystem == CarmoJones => str2Fun(potentialbox)
+                  case `diaConnective` => str2Fun(dia)
+                  case `actualDiaConnective` if ddlSystem == CarmoJones => str2Fun(actualdia)
+                  case `potentialDiaConnective` if ddlSystem == CarmoJones => str2Fun(potentialdia)
+                  case `obligationConnective` => str2Fun(obligation)
+                  case `actualObligationConnective` if ddlSystem == CarmoJones => str2Fun(actualobligation)
+                  case `primaryObligationConnective` if ddlSystem == CarmoJones => str2Fun(primaryobligation)
+                }
+              } else throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
+          }
+          val convertedArgs = args.map(convertFormula)
+          convertedArgs.foldLeft(convertedConnective)(THF.BinaryFormula(THF.App, _, _))
 
         case THF.DistinctObject(_) => formula
 
@@ -183,33 +211,6 @@ object DyadicDeonticLogicEmbedding extends Embedding {
         case THF.~& => str2Fun(nand)
         case THF.| => str2Fun(or)
         case THF.& => str2Fun(and)
-        /// Non-classical connectives BEGIN
-        // Box operator
-        case THF.NonclassicalBox(index) => index match {
-          case None => str2Fun(box)
-          case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
-        }
-        // Diamond operator
-        case THF.NonclassicalDiamond(index) => index match {
-          case None => str2Fun(dia)
-          case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
-        }
-        case THF.NonclassicalLongOperator(name, parameters) =>
-          parameters match {
-            case Seq() => name match {
-              case `boxConnective` => str2Fun(box)
-              case `actualBoxConnective` if ddlSystem == CarmoJones => str2Fun(actualbox)
-              case `potentialBoxConnective` if ddlSystem == CarmoJones => str2Fun(potentialbox)
-              case `diaConnective` => str2Fun(dia)
-              case `actualDiaConnective` if ddlSystem == CarmoJones => str2Fun(actualdia)
-              case `potentialDiaConnective` if ddlSystem == CarmoJones => str2Fun(potentialdia)
-              case `obligationConnective` => str2Fun(obligation)
-              case `actualObligationConnective` if ddlSystem == CarmoJones => str2Fun(actualobligation)
-              case `primaryObligationConnective` if ddlSystem == CarmoJones => str2Fun(primaryobligation)
-            }
-            case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
-          }
-        /// Non-classical connectives END
         case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
       }
     }
