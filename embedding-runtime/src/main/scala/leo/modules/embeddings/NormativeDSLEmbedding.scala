@@ -110,10 +110,11 @@ object NormativeDSLEmbedding extends Embedding {
 
     private[this] def convertNCLFormulaToSDL(formula: TFF.NonclassicalPolyaryFormula): TFF.Formula = {
       formula.connective match {
-        case f@TFF.NonclassicalLongOperator(name, parameters) =>
+        case f@TFF.NonclassicalLongOperator(name, index, parameters) =>
+          if (index.nonEmpty) throw new EmbeddingException(s"Unexpected parameters in NCL connective '${f.pretty}'.")
           val targetIndex: Option[TFF.Term] = parameters match {
             case Seq() => None
-            case Seq(Right((TFF.AtomicTerm("bearer", Seq()), idx))) => Some(idx)
+            case Seq((TFF.AtomicTerm("bearer", Seq()), idx)) => Some(idx)
             case _ => throw new EmbeddingException(s"Unexpected parameters in NCL connective '${f.pretty}'.")
           }
           name match {
@@ -145,30 +146,31 @@ object NormativeDSLEmbedding extends Embedding {
     @inline private val dsdlBoxConnectiveName: String = "$$box"
     private[this] def convertNCLFormulaToDDL(formula: TFF.NonclassicalPolyaryFormula): TFF.Formula = {
       formula.connective match {
-        case f@TFF.NonclassicalLongOperator(name, parameters) =>
+        case f@TFF.NonclassicalLongOperator(name, index, parameters) =>
+          if (index.nonEmpty) throw new EmbeddingException(s"Unexpected parameters in NCL connective '${f.pretty}'.")
           parameters match {
             case Seq() => ()
-            case Seq(Right((TFF.AtomicTerm("bearer", Seq()), _))) => throw new EmbeddingException(s"Bearer annotation not supported in DSDL: '${f.pretty}'.")
+            case Seq((TFF.AtomicTerm("bearer", Seq()), _)) => throw new EmbeddingException(s"Bearer annotation not supported in DSDL: '${f.pretty}'.")
             case _ => throw new EmbeddingException(s"Unexpected parameters in NCL connective '${f.pretty}'.")
           }
           name match {
             case "$$obligation" => formula.args match {
-              case Seq(precondition, obligation) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, Seq.empty), Seq(obligation,precondition))
-              case Seq(obligation) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, Seq.empty), Seq(obligation, TFF.AtomicFormula("$true", Seq.empty)))
+              case Seq(precondition, obligation) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, None, Seq.empty), Seq(obligation,precondition))
+              case Seq(obligation) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, None, Seq.empty), Seq(obligation, TFF.AtomicFormula("$true", Seq.empty)))
               case _ => throw new EmbeddingException(s"NCL expression '${formula.pretty}' with unexpected number of arguments.")
             }
             case "$$prohibition" => formula.args match {
-              case Seq(precondition, prohibition) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, Seq.empty), Seq(TFF.UnaryFormula(TFF.~, prohibition), precondition))
-              case Seq(prohibition) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, Seq.empty), Seq(TFF.UnaryFormula(TFF.~, prohibition), TFF.AtomicFormula("$true", Seq.empty)))
+              case Seq(precondition, prohibition) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, None, Seq.empty), Seq(TFF.UnaryFormula(TFF.~, prohibition), precondition))
+              case Seq(prohibition) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, None, Seq.empty), Seq(TFF.UnaryFormula(TFF.~, prohibition), TFF.AtomicFormula("$true", Seq.empty)))
               case _ => throw new EmbeddingException(s"NCL expression '${formula.pretty}' with unexpected number of arguments.")
             }
             case "$$permission" => formula.args match {
-              case Seq(precondition, permission) => TFF.UnaryFormula(TFF.~, TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, Seq.empty), Seq(TFF.UnaryFormula(TFF.~, permission),precondition)))
-              case Seq(permission) => TFF.UnaryFormula(TFF.~, TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, Seq.empty), Seq(TFF.UnaryFormula(TFF.~, permission),TFF.AtomicFormula("$true", Seq.empty))))
+              case Seq(precondition, permission) => TFF.UnaryFormula(TFF.~, TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, None, Seq.empty), Seq(TFF.UnaryFormula(TFF.~, permission),precondition)))
+              case Seq(permission) => TFF.UnaryFormula(TFF.~, TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlObligationConnectiveName, None, Seq.empty), Seq(TFF.UnaryFormula(TFF.~, permission),TFF.AtomicFormula("$true", Seq.empty))))
               case _ => throw new EmbeddingException(s"NCL expression '${formula.pretty}' with unexpected number of arguments.")
             }
             case "$$constitutive" => formula.args match {
-              case Seq(left, right) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlBoxConnectiveName, Seq.empty), Seq(TFF.BinaryFormula(TFF.Impl, left, right)))
+              case Seq(left, right) => TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(dsdlBoxConnectiveName, None, Seq.empty), Seq(TFF.BinaryFormula(TFF.Impl, left, right)))
               case _ => throw new EmbeddingException(s"NCL expression '${formula.pretty}' with unexpected number of arguments.")
             }
           }

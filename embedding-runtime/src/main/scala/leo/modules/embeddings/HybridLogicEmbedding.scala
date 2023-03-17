@@ -248,7 +248,7 @@ object HybridLogicEmbedding extends Embedding {
               convertedArgs.foldLeft(convertedConnective)(THF.BinaryFormula(THF.App, _, _))
             case _ => throw new EmbeddingException(s"Unsupported operator '${formula.pretty}'.")
           }
-          
+
         /* ######################################### */
         /* Standard cases: Recurse embedding. */
         case THF.FunctionTerm(f, args) =>

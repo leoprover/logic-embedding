@@ -202,6 +202,22 @@ object TemporalLogicEmbedding extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           thf(s"^[W:$worldTypeName]: ($f @ (${convertedLeft.pretty}) @ (${convertedRight.pretty}))")
 
+        case THF.NonclassicalPolyaryFormula(connective, args) =>
+          val convertedConnective = connective match {
+            case THF.NonclassicalLongOperator(name, index, parameters) =>
+              if (index.nonEmpty || parameters.nonEmpty) throw new EmbeddingException(s"No index or parameters allowed in temporal operators, but '${connective.pretty}' was given.")
+              name match {
+                case "$henceforth" => str2Fun("mbox_future")
+                case "$future" => str2Fun("mdia_future")
+                case "$hitherto" => str2Fun("mbox_past")
+                case "$past" => str2Fun("mdia_past")
+                case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
+              }
+            case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
+          }
+          val body = if (args.size == 1) args.head else throw new EmbeddingException(s"Only unary connectives supported, but '${formula.pretty}' was given.")
+          THF.BinaryFormula(THF.App, convertedConnective, body)
+
         /* ######################################### */
         /* Standard cases: Recurse embedding. */
         case THF.FunctionTerm(f, args) =>
@@ -244,7 +260,6 @@ object TemporalLogicEmbedding extends Embedding {
           val body = THF.BinaryFormula(equalityLike, convertedLeft, convertedRight)
           THF.QuantifiedFormula(THF.^, Seq(("W", THF.FunctionTerm(worldTypeName, Seq.empty))), body)
 
-        /* The following case also subsumes where `connective` is a non-classical connective. */
         case THF.BinaryFormula(connective, left, right) =>
           val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
@@ -303,29 +318,6 @@ object TemporalLogicEmbedding extends Embedding {
         case THF.<~> => inlineMniffDef
         case THF.~| => inlineMnorDef
         case THF.~& => inlineMnandDef
-        /// Non-classical connectives BEGIN
-        // temporal operators
-        case THF.NonclassicalLongOperator(name, parameters) =>
-          name match {
-            case "$henceforth" => parameters match {
-              case Seq() => str2Fun("mbox_future")
-              case _ => throw new EmbeddingException(s"No index is allowed in G operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case "$future" => parameters match {
-              case Seq() => str2Fun("mdia_future")
-              case _ => throw new EmbeddingException(s"No index is allowed in F operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case "$hitherto" => parameters match {
-              case Seq() => str2Fun("mbox_past")
-              case _ => throw new EmbeddingException(s"No index is allowed in H operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case "$past" => parameters match {
-              case Seq() => str2Fun("mdia_past")
-              case _ => throw new EmbeddingException(s"No index is allowed in P operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
-          }
-        /// Non-classical connectives END
         // Error cases
         case THF.App | THF.Eq | THF.Neq => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
         case THF.:= => throw new EmbeddingException(s"Unexpected assignment operator used as connective.")

@@ -205,6 +205,49 @@ object ModalLogicEmbeddingOld extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           thf(s"^[W:$worldTypeName]: ($f @ (${convertedLeft.pretty}) @ (${convertedRight.pretty}))")
 
+        case THF.NonclassicalPolyaryFormula(connective, args) =>
+          val convertedConnective = connective match {
+            case THF.NonclassicalBox(index) => index match {
+              case Some(index0) => mboxIndexed(index0)
+              case None => str2Fun("mbox")
+            }
+            // Diamond operator
+            case THF.NonclassicalDiamond(index) => index match {
+              case Some(index0) => mdiaIndexed(index0)
+              case None => str2Fun("mdia")
+            }
+            case THF.NonclassicalLongOperator(name, index, parameters) =>
+              name match {
+                case "$box" | "$necessary" | "$obligatory" | "$knows" | "$believes" =>
+                  if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
+                  index match {
+                    case Some(index0) => mboxIndexed(index0)
+                    case None => str2Fun("mbox")
+                  }
+                case "$dia" | "$possible" | "$permissible" | "$canKnow" | "$canBelieve" =>
+                  if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
+                  index match {
+                    case Some(index0) => mdiaIndexed(index0)
+                    case None => str2Fun("mdia")
+                  }
+                case "$forbidden" =>
+                  if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
+                  index match {
+                    case Some(index0) =>
+                      val box = mboxIndexed(index0)
+                      modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
+                    case None =>
+                      val box = str2Fun("mbox")
+                      modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
+                  }
+                case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
+              }
+          }
+          args match {
+            case Seq(body) => THF.BinaryFormula(THF.App, convertedConnective, convertFormula(body))
+            case _ => throw new EmbeddingException(s"Unexpected number of arguments to connective '$name' in ${formula.pretty} given.")
+          }
+
         /* ######################################### */
         /* Standard cases: Recurse embedding. */
         case THF.FunctionTerm(f, args) =>
@@ -306,42 +349,6 @@ object ModalLogicEmbeddingOld extends Embedding {
         case THF.<~> => inlineMniffDef
         case THF.~| => inlineMnorDef
         case THF.~& => inlineMnandDef
-        /// Non-classical connectives BEGIN
-        // Box operator
-        case THF.NonclassicalBox(index) => index match {
-          case Some(index0) => mboxIndexed(index0)
-          case None => str2Fun("mbox")
-        }
-        // Diamond operator
-        case THF.NonclassicalDiamond(index) => index match {
-          case Some(index0) => mdiaIndexed(index0)
-          case None => str2Fun("mdia")
-        }
-        case THF.NonclassicalLongOperator(name, parameters) =>
-          name match {
-            case "$box" | "$necessary" | "$obligatory" | "$knows" | "$believes" => parameters match {
-              case Seq() => str2Fun("mbox")
-              case Seq(Left(index0)) => mboxIndexed(index0)
-              case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case "$dia" | "$possible" | "$permissible" | "$canKnow" | "$canBelieve" => parameters match {
-              case Seq() => str2Fun("mdia")
-              case Seq(Left(index0)) => mdiaIndexed(index0)
-              case _ => throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case "$forbidden" => parameters match {
-              case Seq() =>
-                val box = str2Fun("mbox")
-                modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
-              case Seq(Left(index0)) =>
-                val box = mboxIndexed(index0)
-                modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
-              case _ => throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
-            }
-            case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
-          }
-
-        /// Non-classical connectives END
         // Error cases
         case THF.App | THF.Eq | THF.Neq => throw new EmbeddingException(s"An unexpected error occurred, this is considered a bug. Please report it :-)")
         case THF.:= => throw new EmbeddingException(s"Unexpected assignment operator used as connective.")
@@ -1143,9 +1150,9 @@ object ModalLogicEmbeddingOld extends Embedding {
                   }
                   map foreach { case (lhs, modalspec) =>
                     val index0 = lhs match {
-                      case THF.ConnectiveTerm(THF.NonclassicalBox(Some(index))) => index
-                      case THF.ConnectiveTerm(THF.NonclassicalLongOperator(cname, Seq(Left(index))))
-                        if Seq("$box", "$necessary" , "$obligatory" , "$knows").contains(cname) => index
+                      case THF.NonclassicalPolyaryFormula(THF.NonclassicalBox(Some(index)), Seq()) => index
+                      case THF.NonclassicalPolyaryFormula(THF.NonclassicalLongOperator(cname, Some(index), Seq()), Seq())
+                        if Seq("$box", "$necessary", "$obligatory", "$knows").contains(cname) => index
                       case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
                     }
                     val index = escapeModalIndex(index0)

@@ -89,6 +89,53 @@ object PublicAnnouncementLogicEmbedding extends Embedding {
         case THF.FunctionTerm(f, Seq()) if Seq("$true", "$false").contains(f) =>
           thf(s"^[D: $domainType, W: $worldType]: $f")
 
+        case THF.NonclassicalPolyaryFormula(connective, args) =>
+          val convertedConnective = connective match {
+            case THF.NonclassicalBox(index) => index match {
+              case Some(idx) => indexedKnowledge(idx)
+              case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
+            }
+            case THF.NonclassicalLongOperator(cname, index, parameters) =>
+              cname match {
+                case `knowledgeConnective` =>
+                  if (parameters.nonEmpty) throw new EmbeddingException(s"Illegal parameter specified for '$cname' in ${connective.pretty}.")
+                  index match {
+                    case Some(index0) => indexedKnowledge(index0)
+                    case None => throw new IllegalArgumentException(s"Index parameter required for '$cname' in ${connective.pretty}.")
+                  }
+                case `commonKnowledgeConnective` =>
+                  if (index.nonEmpty) throw new EmbeddingException(s"Illegal parameter specified for '$cname' in ${connective.pretty}.")
+                  parameters match {
+                  case Seq((THF.FunctionTerm("$$group", Seq()), THF.Tuple(elements))) if elements.nonEmpty =>
+                    val indexes = elements.map {
+                      case idx@THF.FunctionTerm(_, Seq()) => multiModal(idx)
+                      case _ => throw new IllegalArgumentException(s"Illegal index values in parameter to '$cname': ${connective.pretty}")
+                    }
+                    val body0 = indexes.map(idx =>
+                      THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun("mrel"), idx), THF.Variable("W")), THF.Variable("V"))
+                    )
+
+                    def reduce0(l: THF.Formula, r: THF.Formula): THF.Formula = THF.BinaryFormula(THF.|, l, r)
+
+                    val body: THF.Formula = body0.reduce(reduce0)
+                    val rel = THF.QuantifiedFormula(THF.^, Seq(("W", cworldType), ("V", cworldType)), body)
+                    THF.BinaryFormula(THF.App, str2Fun(common), rel)
+                  case _ => throw new IllegalArgumentException(s"Illegal parameter specified for '$cname' in ${connective.pretty}.")
+                }
+                case `announcementConnective` =>
+                  if (index.nonEmpty) throw new EmbeddingException(s"Illegal parameter specified for '$cname' in ${connective.pretty}.")
+                  parameters match {
+                    case Seq((THF.FunctionTerm("$$formula", Seq()), announcementFormula)) =>
+                      val convertedAnnouncement = convertFormula(announcementFormula)
+                      THF.BinaryFormula(THF.App, str2Fun(announcement), convertedAnnouncement)
+                    case _ => throw new IllegalArgumentException(s"Illegal parameter specified for '$cname' in ${connective.pretty}.")
+                  }
+                case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
+              }
+          }
+          val body = if (args.size == 1)  args.head else throw new EmbeddingException(s"Only unary connectives supported, but '${formula.pretty}' was given.")
+          THF.BinaryFormula(THF.App, convertedConnective, body)
+
         /* ######################################### */
         /* Standard cases: Recurse embedding. */
         case THF.FunctionTerm(f, Seq()) =>
@@ -105,7 +152,6 @@ object PublicAnnouncementLogicEmbedding extends Embedding {
           val convertedRight: TPTP.THF.Formula = convertFormula(right)
           THF.BinaryFormula(App, convertedLeft, convertedRight)
 
-        /* The following case also subsumes where `connective` is a non-classical connective. */
         case THF.BinaryFormula(connective, left, right) =>
           val convertedConnective: TPTP.THF.Formula = convertConnective(connective)
           val convertedLeft: TPTP.THF.Formula = convertFormula(left)
@@ -150,42 +196,6 @@ object PublicAnnouncementLogicEmbedding extends Embedding {
         case THF.~& => str2Fun(nand)
         case THF.| => str2Fun(or)
         case THF.& => str2Fun(and)
-        /// Non-classical connectives BEGIN
-        // Box operator
-        case THF.NonclassicalBox(index) => index match {
-          case Some(idx) => indexedKnowledge(idx)
-          case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
-        }
-        case THF.NonclassicalLongOperator(cname, parameters) =>
-          cname match {
-            case `knowledgeConnective` => parameters match {
-              case Seq(Left(idx)) => indexedKnowledge(idx)
-              case _ => throw new IllegalArgumentException(s"Illegal parameter specified for '$cname' in ${connective.pretty}.")
-            }
-            case `commonKnowledgeConnective` => parameters match {
-              case Seq(Right((THF.FunctionTerm("$$group", Seq()), THF.Tuple(elements)))) if elements.nonEmpty =>
-                val indexes = elements.map {
-                  case idx@THF.FunctionTerm(_, Seq()) => multiModal(idx)
-                  case _ => throw new IllegalArgumentException(s"Illegal index values in parameter to '$cname': ${connective.pretty}")
-                }
-                val body0 = indexes.map( idx =>
-                  THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun("mrel"), idx), THF.Variable("W")), THF.Variable("V"))
-                )
-                def reduce0(l: THF.Formula, r: THF.Formula): THF.Formula = THF.BinaryFormula(THF.|, l, r)
-                val body: THF.Formula = body0.reduce(reduce0)
-                val rel = THF.QuantifiedFormula(THF.^, Seq(("W", cworldType), ("V", cworldType)), body)
-                THF.BinaryFormula(THF.App, str2Fun(common), rel)
-              case _ => throw new IllegalArgumentException(s"Illegal parameter specified for '$cname' in ${connective.pretty}.")
-            }
-            case `announcementConnective` => parameters match {
-              case Seq(Right((THF.FunctionTerm("$$formula", Seq()), announcementFormula))) =>
-                val convertedAnnouncement = convertFormula(announcementFormula)
-                THF.BinaryFormula(THF.App, str2Fun(announcement), convertedAnnouncement)
-              case _ => throw new IllegalArgumentException(s"Illegal parameter specified for '$cname' in ${connective.pretty}.")
-            }
-            case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
-          }
-        /// Non-classical connectives END
         case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
       }
     }

@@ -226,7 +226,20 @@ object TermModalEmbedding extends Embedding {
 
         case TFF.NonclassicalPolyaryFormula(connective, args) =>
           val convertedArgs = args.map(convertFormula(_, boundVars))
-          val convertedConnective = convertConnective(connective, boundVars)
+          val convertedConnective = connective match {
+            case TFF.NonclassicalLongOperator(name, index, Seq((TFF.AtomicTerm("term", Seq()), term))) =>
+              if (index.nonEmpty) throw new EmbeddingException(s"Only parameters of the form 'term := ...' allowed in connective '$name', but '${connective.pretty}' was given.")
+              name match {
+                case "$box" =>
+                  val argType = getGoalTypeOfTerm(term, boundVars)
+                  mbox(convertTerm(term), convertType(argType))
+                case "$dia" =>
+                  val argType = getGoalTypeOfTerm(term, boundVars)
+                  mdia(convertTerm(term), convertType(argType))
+                case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
+              }
+            case _ => throw new EmbeddingException(s"Unknown connective '${connective.pretty}'.")
+          }
           convertedArgs.foldLeft(convertedConnective){case (l,r) => THF.BinaryFormula(THF.App, l, r) }
 
         case TFF.QuantifiedFormula(quantifier, variableList, body) =>
@@ -309,17 +322,6 @@ object TermModalEmbedding extends Embedding {
         case TFF.<~> => inlineMniffDef
         case TFF.~| => inlineMnorDef
         case TFF.~& => inlineMnandDef
-        /// Non-classical case
-        case TFF.NonclassicalLongOperator(name, Seq(Right((TFF.AtomicTerm("term", Seq()),term)))) =>
-          name match {
-            case "$box" =>
-              val argType = getGoalTypeOfTerm(term, boundVars)
-              mbox(convertTerm(term), convertType(argType))
-            case "$dia" =>
-              val argType = getGoalTypeOfTerm(term, boundVars)
-              mdia(convertTerm(term), convertType(argType))
-            case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
-          }
         case _ => throw new EmbeddingException(s"Unsupported connective: '${connective.pretty}'")
       }
     }
