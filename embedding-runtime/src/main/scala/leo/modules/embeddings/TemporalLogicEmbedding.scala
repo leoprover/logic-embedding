@@ -216,7 +216,7 @@ object TemporalLogicEmbedding extends Embedding {
             case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
           }
           val body = if (args.size == 1) args.head else throw new EmbeddingException(s"Only unary connectives supported, but '${formula.pretty}' was given.")
-          THF.BinaryFormula(THF.App, convertedConnective, body)
+          THF.BinaryFormula(THF.App, convertedConnective, convertFormula(body))
 
         /* ######################################### */
         /* Standard cases: Recurse embedding. */
