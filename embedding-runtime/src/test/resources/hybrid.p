@@ -12,4 +12,4 @@ tff(hybrid_s5,logic,(
 
 %tff(1, conjecture, {$$bind(#X)}( {$$shift(#X)}(X) )).
 
-tff(1, conjecture, ![X]: {$$shift(#n)}({$$bind(#Y)}((Y & p(X)) <=> ({$$nominal}(n) & p(X))))).
+tff(1, conjecture, ![X]: {$$shift(#n)} @ ({$$bind(#Y)} @ ((Y & p(X)) <=> ({$$nominal} @ (n) & p(X))))).
