@@ -1,6 +1,6 @@
 lazy val commonSettings = Seq(
   organization := "org.leo",
-  version := "1.7.12",
+  version := "1.7.13",
   scalaVersion := "2.13.10",
   scalacOptions ++= Seq(
       "-deprecation",
@@ -9,7 +9,7 @@ lazy val commonSettings = Seq(
   licenses += "BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause"),
   //resolvers += "Sonatype S01 OSS Snapshots" at "https://s01.oss.sonatype.org/content/repositories/snapshots",
 
-  libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.7.0",
+  libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.7.1",
   libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
 )
 
