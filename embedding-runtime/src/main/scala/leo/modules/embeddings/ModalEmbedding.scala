@@ -14,7 +14,7 @@ object ModalEmbedding extends Embedding {
     @unused
     final val MONOMORPHIC, POLYMORPHIC,
     MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL = Value
+    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, ALLOW_FIRSTORDER = Value
   }
 
   override type OptionType = ModalEmbeddingOption.type
@@ -27,8 +27,19 @@ object ModalEmbedding extends Embedding {
     generateTHFSpecification(name, Seq("$modalities", "$quantification", "$constants"), specs)
 
   override final def apply(problem: TPTP.Problem,
-                  embeddingOptions: Set[ModalEmbeddingOption.Value]): TPTP.Problem =
-    new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+                  embeddingOptions: Set[ModalEmbeddingOption.Value]): TPTP.Problem = {
+    if (embeddingOptions.contains(ModalEmbeddingOption.ALLOW_FIRSTORDER)) {
+      // If the ALLOW_FIRSTORDER parameter is set, and the problem is indeed first-order modal logic,
+      // use the first-order embedding of modal logic instead. If unset, it will default to the higher-order embedding (else case).
+      if (problem.formulas.forall(_.formulaType == TPTP.AnnotatedFormula.FormulaType.TFF)) {
+        println(s"%%% First-order input detected and ALLOW_FIRSTORDER flag used, using modal-logic-to-TFF embedding instead (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}).")
+        if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC))
+          FirstOrderManySortedToTXFEmbedding.apply(problem, Set(FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.POLYMORPHIC))
+        else
+          FirstOrderManySortedToTXFEmbedding.apply(problem, Set.empty)
+      } else new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+    } else new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+  }
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
                            embeddingOptions: Set[ModalEmbeddingOption.Value]): Seq[TPTP.AnnotatedFormula] =

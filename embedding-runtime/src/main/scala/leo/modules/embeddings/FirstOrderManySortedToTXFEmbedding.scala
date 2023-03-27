@@ -548,9 +548,9 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
 
     private[this] def createState(spec: TFFAnnotated): Unit = {
       spec.formula match {
-        case TFF.Logical(TFF.AtomicFormula(`name`, Seq())) =>
+        case TFF.Logical(TFF.AtomicFormula(logicname, Seq())) if Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal", name) contains logicname =>
           headless = true
-        case TFF.Logical(TFF.MetaIdentity(TFF.AtomicTerm(`name`, Seq()), TFF.Tuple(spec0))) =>
+        case TFF.Logical(TFF.MetaIdentity(TFF.AtomicTerm(logicname, Seq()), TFF.Tuple(spec0))) if Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal", name) contains logicname =>
           headless = false
           spec0 foreach {
             case TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(propertyName, Seq()), rhs)) =>
