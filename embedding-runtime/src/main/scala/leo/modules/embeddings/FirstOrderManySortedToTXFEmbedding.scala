@@ -19,7 +19,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.2.1"
+  override final val version: String = "1.2.2"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, Seq("$modalities", "$quantification", "$constants") , specs)
@@ -307,8 +307,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
 
     private[this] def escapeIndex(idx: TFF.Term): TFF.Term = {
       val escaped = idx match {
-        case TFF.AtomicTerm(f, Seq()) => escapeAtomicWord(s"index($f)")
-        case TFF.NumberTerm(value) => escapeAtomicWord(s"index(${value.pretty})")
+        case TFF.AtomicTerm(f, Seq()) => escapeAtomicWord(s"#idx($f)")
+        case TFF.NumberTerm(value) => escapeAtomicWord(s"#idx(${value.pretty})")
         case _ => throw new EmbeddingException(s"Only numbers or constants allowed as index value to modal operators, but '${idx.pretty}' was given.")
       }
       TFF.AtomicTerm(escaped, Seq.empty)
@@ -592,29 +592,27 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$modalities" => val (default, _) = parseTFFListSpecRHS(rhs)
+                case "$modalities" => val (default, map) = parseTFFListSpecRHS(rhs)
                   if (default.nonEmpty) {
                     modalDefaultExists = true
                     if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
                       modalsMap = modalsMap.withDefaultValue(default)
                     } else throw new EmbeddingException(s"Unknown modality specification: ${default.mkString("[", ",", "]")}")
                   }
-                // TODO: How to parse box-wise modality properties in NXF?
-                //
-//                  map foreach { case (lhs, modalspec) =>
-//                    val index0 = lhs match {
-//                      case THF.ConnectiveTerm(THF.NonclassicalBox(Some(index))) => index
-//                      case THF.ConnectiveTerm(THF.NonclassicalLongOperator(cname, Seq(Left(index))))
-//                        if Seq("$box", "$necessary", "$obligatory", "$knows").contains(cname) => index
-//                      case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
-//                    }
-//                    val index = escapeModalIndex(index0)
-//                    if (modalspec.nonEmpty) {
-//                      if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
-//                        modalsMap = modalsMap + (index -> modalspec)
-//                      } else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[", ",", "]")}")
-//                    }
-//                  }
+                  map foreach { case (lhs, modalspec) =>
+                    val index0 = lhs match {
+                      case TFF.FormulaTerm(TFF.NonclassicalPolyaryFormula(TFF.NonclassicalBox(Some(index)), Seq())) => index
+                      case TFF.FormulaTerm(TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(cname, Some(index), Seq()), Seq()))
+                        if Seq("$box", "$necessary", "$obligatory", "$knows").contains(cname) => index
+                      case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
+                    }
+                    val index = escapeIndex(index0)
+                    if (modalspec.nonEmpty) {
+                      if (modalspec.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {
+                        modalsMap = modalsMap + (index -> modalspec)
+                      } else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[", ",", "]")}")
+                    }
+                  }
                 case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
               }
             case s => throw new EmbeddingException(s"Malformed logic specification entry: ${s.pretty}")
