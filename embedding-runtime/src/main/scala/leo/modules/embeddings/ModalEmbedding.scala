@@ -36,7 +36,7 @@ object ModalEmbedding extends Embedding {
       val maybeSpec = getLogicSpecFromProblem(problem.formulas)
       maybeSpec match {
         case Some(spec) if spec.formulaType == TPTP.AnnotatedFormula.FormulaType.TFF =>
-          println(s"%%% First-order input detected, using modal-logic-to-TFF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}). Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
+          System.err.println(s"%%% First-order input detected, using modal-logic-to-TFF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}). Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
           /* create new parameter set */
           var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
           if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
