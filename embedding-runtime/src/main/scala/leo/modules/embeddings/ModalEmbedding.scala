@@ -14,31 +14,38 @@ object ModalEmbedding extends Embedding {
     @unused
     final val MONOMORPHIC, POLYMORPHIC,
     MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, ALLOW_FIRSTORDER = Value
+    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, FORCE_HIGHERORDER, LOCALEXTENSION, EMPTYDOMAINS = Value
   }
 
   override type OptionType = ModalEmbeddingOption.type
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "2.0.1"
+  override final def version: String = "2.1.0"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
     generateTHFSpecification(name, Seq("$modalities", "$quantification", "$constants"), specs)
 
   override final def apply(problem: TPTP.Problem,
                   embeddingOptions: Set[ModalEmbeddingOption.Value]): TPTP.Problem = {
-    if (embeddingOptions.contains(ModalEmbeddingOption.ALLOW_FIRSTORDER)) {
-      // If the ALLOW_FIRSTORDER parameter is set, and the problem is indeed first-order modal logic,
-      // use the first-order embedding of modal logic instead. If unset, it will default to the higher-order embedding (else case).
-      if (problem.formulas.forall(_.formulaType == TPTP.AnnotatedFormula.FormulaType.TFF)) {
-        println(s"%%% First-order input detected and ALLOW_FIRSTORDER flag used, using modal-logic-to-TFF embedding instead (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}).")
-        if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC))
-          FirstOrderManySortedToTXFEmbedding.apply(problem, Set(FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.POLYMORPHIC))
-        else
-          FirstOrderManySortedToTXFEmbedding.apply(problem, Set.empty)
-      } else new ModalEmbeddingImpl(problem, embeddingOptions).apply()
-    } else new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+    // If the FORCE_HIGHERORDER parameter is set, the embedding will be to THF regardless whether it's first-order (TFF)
+    // or not. If unset, the modal-to-TFF embedding will be used if the logic spec is in TFF, to THF otherwise.
+    if (embeddingOptions.contains(ModalEmbeddingOption.FORCE_HIGHERORDER)) new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+    else {
+      import FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter
+      val maybeSpec = getLogicSpecFromProblem(problem.formulas)
+      maybeSpec match {
+        case Some(spec) if spec.formulaType == TPTP.AnnotatedFormula.FormulaType.TFF =>
+          println(s"%%% First-order input detected, using modal-logic-to-TFF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}). Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
+          /* create new parameter set */
+          var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
+          if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
+          if (embeddingOptions.contains(ModalEmbeddingOption.EMPTYDOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.EMPTYDOMAINS
+          if (embeddingOptions.contains(ModalEmbeddingOption.LOCALEXTENSION)) parameters = parameters + FOMLToTXFEmbeddingParameter.LOCALEXTENSION
+          FirstOrderManySortedToTXFEmbedding.apply(problem, parameters)
+        case _ => new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+      }
+    }
   }
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
@@ -79,7 +86,9 @@ object ModalEmbedding extends Embedding {
     private[this] var modalDefaultExists: Boolean = false
     ////////////////////////////////////////////////////////////////////
     // Embedding options
-    private val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
+    private[this] val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
+    private[this] val localExtension: Boolean = embeddingOptions.contains(LOCALEXTENSION) // default non-local extensions
+    private[this] val allowEmptyDomains: Boolean = embeddingOptions.contains(EMPTYDOMAINS) // default non-empty domains
 
     private final val MODALITY_EMBEDDING_SYNTACTICAL = true
     private final val MODALITY_EMBEDDING_SEMANTICAL = false
@@ -476,13 +485,16 @@ object ModalEmbedding extends Embedding {
           if (quantifierTypes.nonEmpty) {
             if (quantifierTypes.exists(ty => domainMap(ty.pretty) != ConstantDomain)) {
               result.appendAll(polyIndexedExistsInWorldTPTPDef()) // define poly eiw
+              if (!allowEmptyDomains) result.appendAll(polyIndexedExistsInWorldNonEmptyTPTPDef()) // domain non-empty
               quantifierTypes.foreach { ty => // postulate existence for each constant symbol of that type (if any),
                 // or, if S5 and cumul/decreasing, then as universal predicate
                 if (isS5 && (domainMap(ty.pretty) == CumulativeDomain || domainMap(ty.pretty) == DecreasingDomain)) {
                   result.appendAll(polyIndexedUniversalExistsInWorldTPTPDef(ty))
                 } else {
-                  reverseSymbolTypeMap(ty).foreach { constant =>
-                    result.appendAll(polyIndexedConstantExistsInWorldTPTPDef(ty, constant))
+                  if (localExtension) {
+                    reverseSymbolTypeMap(ty).foreach { constant =>
+                      result.appendAll(polyIndexedConstantExistsInWorldTPTPDef(ty, constant))
+                    }
                   }
                 }
               }
@@ -509,14 +521,17 @@ object ModalEmbedding extends Embedding {
           quantifierTypes foreach { ty =>
             if (domainMap(ty.pretty) != ConstantDomain) {
               result.appendAll(indexedExistsInWorldTPTPDef(ty)) // define eiw with standard axioms
+              if (!allowEmptyDomains) result.appendAll(indexedExistsInWorldNonEmptyTPTPDef(ty)) // domain non-empty
               if (domainMap(ty.pretty) != VaryingDomain && isS5) {
                 // Special case: If cumul or decreasing, and in S5, then it's equivalent to constant domain.
                 // Simulate this by postulating eiw as constant true (simpler to do, implementation wise, than removing eiw completely)
                 result.appendAll(indexedUniversalExistsInWorldTPTPDef(ty))
               } else {
+                if (localExtension) {
                   reverseSymbolTypeMap(ty).foreach { constant => // postulate existence for each constant symbol of that type (if any)
                     result.appendAll(indexedConstantExistsInWorldTPTPDef(ty, constant))
                   }
+                }
               }
             }
             // In case of non-S5, add cumul/decreasing axioms
@@ -616,6 +631,11 @@ object ModalEmbedding extends Embedding {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
         annotatedTHF(s"thf(eiw_${serializeType(typ)}_decl, type, eiw_${serializeType(typ)}: (${typ.pretty} > $worldTypeName > $$o))."),
+      )
+    }
+    private[this] def indexedExistsInWorldNonEmptyTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
         annotatedTHF(s"thf(eiw_${serializeType(typ)}_nonempty, axiom, ![W:$worldTypeName]: ?[X:${typ.pretty}]: (eiw_${serializeType(typ)} @ X @ W) ).")
       )
     }
@@ -670,7 +690,12 @@ object ModalEmbedding extends Embedding {
     private[this] def polyIndexedExistsInWorldTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       Seq(
-        annotatedTHF(s"thf(eiw_decl, type, eiw: !>[T:$$tType]: (T > $worldTypeName > $$o))."),
+        annotatedTHF(s"thf(eiw_decl, type, eiw: !>[T:$$tType]: (T > $worldTypeName > $$o)).")
+      )
+    }
+    private[this] def polyIndexedExistsInWorldNonEmptyTPTPDef(): Seq[TPTP.AnnotatedFormula] = {
+      import modules.input.TPTPParser.annotatedTHF
+      Seq(
         annotatedTHF(s"thf(eiw_nonempty, axiom, ![T:$$tType, W:$worldTypeName]: ?[X:T]: (eiw @ T @ X @ W) ).")
       )
     }
