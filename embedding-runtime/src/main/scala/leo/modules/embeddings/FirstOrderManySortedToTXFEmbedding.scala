@@ -19,7 +19,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.2.2"
+  override final val version: String = "1.2.3"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, Seq("$modalities", "$quantification", "$constants") , specs)
@@ -469,7 +469,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       val ty0 = ty.pretty
       val name = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_nonempty"
       if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ?[X:$ty0]: ( $existencePredicateName($ty0,W,X) )).")
-      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: : ?[X:$ty0]: ( ${existencePredicateNameForType(ty)}(W,X) )).")
+      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ?[X:$ty0]: ( ${existencePredicateNameForType(ty)}(W,X) )).")
     }
 
     private[this] def constantExistsInWorldTPTPDef(poly: Boolean, ty: TFF.Type): TPTP.AnnotatedFormula = {
