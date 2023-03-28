@@ -242,6 +242,7 @@ object ModalLogicEmbeddingOld extends Embedding {
                   }
                 case _ => throw new EmbeddingException(s"Unknown connective name '$name'.")
               }
+            case _ => throw new EmbeddingException(s"Unknown connective '${connective.pretty}'.")
           }
           args match {
             case Seq(body) => THF.BinaryFormula(THF.App, convertedConnective, convertFormula(body))

@@ -132,6 +132,7 @@ object PublicAnnouncementLogicEmbedding extends Embedding {
                   }
                 case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
               }
+            case _ => throw new EmbeddingException(s"Unsupported connective: '${connective.pretty}'. ")
           }
           val body = if (args.size == 1)  args.head else throw new EmbeddingException(s"Only unary connectives supported, but '${formula.pretty}' was given.")
           THF.BinaryFormula(THF.App, convertedConnective, convertFormula(body))
