@@ -532,12 +532,19 @@ object ModalEmbedding extends Embedding {
           THF.QuantifiedFormula(quantifier,convertedVariables, convertedBody)
 
         case THF.FunctionTerm(f,args) => f match{
-          case "$ki_accessible" =>
+          case "$ki_accessible" => specIndex match {
             // change "$ki_accessible" to "mrel"
             // no index of the accessibility relation being defined can be given to "$ki_accessible" in semantic formulas so the index of the modal operator that the formula characterizes in the logic spec is used for "mrel"
-            val rel = s"(mrel @ '${specIndex.get}')"
-            if (args.nonEmpty) THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(rel), args.head), args.last)
-            else THF.FunctionTerm(rel,args)
+            case Some(value) =>
+              val rel = s"(mrel @ '$value')"
+              if (args.nonEmpty) THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(rel), args.head), args.last)
+              else THF.FunctionTerm(rel, args)
+            case None =>
+              val rel = s"(mrel)"
+              if (args.nonEmpty) THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(rel), args.head), args.last)
+              else THF.FunctionTerm(rel, args)
+          }
+            
           case otherName =>
             throw new EmbeddingException(s"Invalid function or predicate in semantic in the logic spec: $otherName given but only ki_accessible is allowed")
         }
@@ -552,7 +559,7 @@ object ModalEmbedding extends Embedding {
           THF.UnaryFormula(connective, convertedBody)
 
         case otherFormula =>
-          throw new EmbeddingException(s"Invalid Symbol ${otherFormula.pretty} in semantical Formulas of logic spec") //M! rephrase
+          throw new EmbeddingException(s"Invalid Symbol ${otherFormula.pretty} in semantic formulas of logic spec") //M! rephrase
       }
     }
 
@@ -687,7 +694,7 @@ object ModalEmbedding extends Embedding {
       // write used properties and assign (if semantical)
       // or write syntactical axioms (if syntactical)
       var predefinedFormulas: Seq[AnnotatedFormula] = Seq.empty
-      var semanticalFormulas: Seq[AnnotatedFormula] = Seq.empty
+      var semanticFormulas: Seq[AnnotatedFormula] = Seq.empty
       var syntaticalFormulas: Seq[AnnotatedFormula] = Seq.empty
       var metaAxioms:Seq[THFAnnotated] = Seq.empty
       if (isMultiModal) {
@@ -708,21 +715,21 @@ object ModalEmbedding extends Embedding {
             }
           }
           /////////////////////////////////////////////////////////////
-          // semantical and syntactical formulas
+          // semantic and syntactic formulas
 
           // index of the operator the formulas define in the logic-spec will be used to assign correct index to operators given without index
           // and to check weather operators given with an index are indexed correctly
           val modalSpecIndex = unescapeTPTPName(index.pretty)
           modalsMapFormulas.get(index) foreach { formulaList =>
             formulaList foreach { formula =>
-              def isSemantical: Boolean = formula.symbols.contains("$ki_accessible")
-              // convert semantical logic-spec formulas
-              if (isSemantical) {
+              def isSemantic: Boolean = formula.symbols.contains("$ki_accessible")
+              // convert semantic logic-spec formulas
+              if (isSemantic) {
                 val convertedFormula = convertSemanticPreFormula(formula, Some(modalSpecIndex))
                 // count formulas in order to enumerate them
-                val formulaCount: Int = semanticalFormulas.length + 1
-                val annotatedSemantical = annotatedTHF(s"thf('mrel_${modalSpecIndex}_semantical$formulaCount', axiom, ${convertedFormula.pretty} ).")
-                semanticalFormulas = semanticalFormulas :+ annotatedSemantical
+                val formulaCount: Int = semanticFormulas.length + 1
+                val annotatedsemantic = annotatedTHF(s"thf('mrel_${modalSpecIndex}_semantic$formulaCount', axiom, ${convertedFormula.pretty} ).")
+                semanticFormulas = semanticFormulas :+ annotatedsemantic
               }
               // convert syntactical logic-spec formulas
               else {
@@ -730,8 +737,8 @@ object ModalEmbedding extends Embedding {
                 val quantifiedFormula = quantifySyntacticPreFormula(convertedFormula._1,convertedFormula._2)
                 // count formulas in order to enumerate them
                 val formulaCount: Int = syntaticalFormulas.length + 1
-                val annotatedSyntactical = annotatedTHF(s"thf('mrel_${modalSpecIndex}_syntatical$formulaCount', axiom, ${quantifiedFormula.pretty} ).")
-                syntaticalFormulas = syntaticalFormulas :+ annotatedSyntactical
+                val annotatedSyntactic = annotatedTHF(s"thf('mrel_${modalSpecIndex}_syntatic$formulaCount', axiom, ${quantifiedFormula.pretty} ).")
+                syntaticalFormulas = syntaticalFormulas :+ annotatedSyntactic
               }
             }
           }
@@ -754,12 +761,25 @@ object ModalEmbedding extends Embedding {
       /////////////////////////////////////////////////////////////
       // bridge axioms and other meta axioms
       modalsMetaAxioms foreach {axiom =>
-        val convertedAxiom = convertSyntacticPreFormula(axiom,Map.empty,Seq.empty,None)
-        val quantifiedAxiom = quantifySyntacticPreFormula(convertedAxiom._1,convertedAxiom._2)
-        // count formulas in order to enumerate them
-        val formulaCount: Int = metaAxioms.length + 1
-        val annotatedAxiom = annotatedTHF(s"thf('meta_axiom_$formulaCount', axiom, ${quantifiedAxiom.pretty} ).")
-        metaAxioms = metaAxioms :+ annotatedAxiom
+        def isSemantic: Boolean = axiom.symbols.contains("$ki_accessible")
+        // In the multimodal case, semantic formulas can not be given outside the definitions for specific modal operators right now since the syntax does not allow for it.
+        // In the monomodal case semantic formulas can be given here and represent the general characteristics of the (only) accessibility relation.
+        if (isSemantic & isMultiModal) throw new EmbeddingException(s"Semantic notation for meta axioms and bridge axioms is not supported, so ${axiom.pretty} can not be embedded")
+        else {
+          if (isSemantic & !isMultiModal) {
+            val formulaCount: Int = metaAxioms.length + 1
+            val convertedMetaFormula = convertSemanticPreFormula(axiom,None)
+            val annotatedAxiom = annotatedTHF(s"thf('semantic_condition_$formulaCount', axiom, ${convertedMetaFormula.pretty} ).")
+            metaAxioms = metaAxioms :+ annotatedAxiom
+            // if formula is not semantic it can be processed as a syntactic formula in both multi- and monomodal case
+          }
+          else {
+            val formulaCount: Int = metaAxioms.length + 1
+            val convertedMetaFormula = quantifySyntacticPreFormula(convertSyntacticPreFormula(axiom, Map.empty, Seq.empty, None)._1, convertSyntacticPreFormula(axiom, Map.empty, Seq.empty, None)._2)
+            val annotatedAxiom = annotatedTHF(s"thf('meta_axiom_$formulaCount', axiom, ${convertedMetaFormula.pretty} ).")
+            metaAxioms = metaAxioms :+ annotatedAxiom
+          }
+        }
       }
       /////////////////////////////////////////////////////////////
       // Then: Define mglobal/mlocal
@@ -776,7 +796,7 @@ object ModalEmbedding extends Embedding {
       /////////////////////////////////////////////////////////////
       // Then: append the formulas given in the logic-spec
       result.appendAll(predefinedFormulas)
-      result.appendAll(semanticalFormulas)
+      result.appendAll(semanticFormulas)
       result.appendAll(syntaticalFormulas)
       result.appendAll(metaAxioms)
 
