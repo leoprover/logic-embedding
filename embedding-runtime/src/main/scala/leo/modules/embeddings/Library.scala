@@ -17,7 +17,6 @@ object Library {
       "$$hybrid" -> HybridLogicEmbedding,
       "$$pal" -> PublicAnnouncementLogicEmbedding,
       "$$normative" -> NormativeDSLEmbedding,
-      "$$termmodal" -> TermModalEmbedding,
       "$$fomlModel" -> FirstOrderManySortedToTXFEmbedding
     )
   }
