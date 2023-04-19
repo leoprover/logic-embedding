@@ -359,6 +359,51 @@ package object embeddings {
     (default, mapping)
   }
 
+  final def parseTHFModalSpecRHS(rhs: TPTP.THF.Formula): (Seq[String], Map[TPTP.THF.Formula, Seq[String]], Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]], Seq[TPTP.THF.Formula]) = {
+    import TPTP.THF.{FunctionTerm, Tuple}
+    rhs match {
+      case FunctionTerm(f, Seq()) => (Seq(f), Map.empty, Map.empty, Seq())
+      case Tuple(entries) if entries.nonEmpty => parseTHFModalSpecRHS0(entries)
+      case _ => throw new EmbeddingException(s"Right-hand-side of semantics specification could not be read: '${rhs.pretty}'")
+    }
+  }
+  private[this] final def parseTHFModalSpecRHS0(tupleElements: Seq[TPTP.THF.Formula]): (Seq[String], Map[TPTP.THF.Formula, Seq[String]], Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]], Seq[TPTP.THF.Formula]) = {
+    import TPTP.THF.{BinaryFormula, FunctionTerm, Tuple}
+    var default: Seq[String] = Seq.empty
+    // map for predefined axiom and system names used to define the operators
+    var definitionMapping: Map[TPTP.THF.Formula, Seq[String]] = Map.empty
+    // map for the added syntactical and semantical formulas used to define the operators
+    var formulaMapping: Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]] = Map.empty
+    // sequence for the bridge axioms and other meta axioms
+    var metaAxioms: Seq[TPTP.THF.Formula] = Seq.empty
+
+    tupleElements foreach {
+      case FunctionTerm(defaultValue, Seq()) => default = default :+ defaultValue
+      case BinaryFormula(TPTP.THF.==, name, FunctionTerm(value, Seq())) =>
+        if (definitionMapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
+        else {
+          definitionMapping = definitionMapping + (name -> Seq(value))
+        }
+      case bf@BinaryFormula(TPTP.THF.==, name, Tuple(entries)) if entries.nonEmpty =>
+        if (definitionMapping.isDefinedAt(name) || formulaMapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
+        else {
+          val (convertedEntries, convertedEntriesMap, convertedFormulasMap, convertedFormulas) = parseTHFModalSpecRHS0(entries)
+          if (convertedEntriesMap.isEmpty && convertedFormulasMap.isEmpty) {
+            definitionMapping = definitionMapping + (name -> convertedEntries)
+            formulaMapping = formulaMapping + (name -> convertedFormulas)
+          } else {
+            throw new EmbeddingException(s"Could not read semantic specification '${bf.pretty}'.")
+          }
+        }
+      case BinaryFormula(TPTP.THF.==, name, formula) =>
+        if (formulaMapping.isDefinedAt(name)) throw new EmbeddingException(s"More than one value for the identified '${name.pretty}' given. This is considered an error.")
+        else {
+          formulaMapping = formulaMapping + (name -> Seq(formula))
+        }
+      case formula => metaAxioms = metaAxioms :+ formula
+    }
+    (default, definitionMapping, formulaMapping, metaAxioms)
+  }
 
   protected[embeddings] def parseListRHSNew(rhs: TPTP.THF.Formula): (Seq[TPTP.THF.Formula], Map[TPTP.THF.Formula, Seq[TPTP.THF.Formula]]) = {
     import TPTP.THF.Tuple
