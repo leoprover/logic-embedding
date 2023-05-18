@@ -503,7 +503,7 @@ object ModalEmbedding extends Embedding {
       }
     }
 
-    def quantifySyntacticPreFormula(formula: THF.Formula, unboundVars: Seq[String]): THF.Formula = {
+    private def quantifySyntacticPreFormula(formula: THF.Formula, unboundVars: Seq[String]): THF.Formula = {
       // the free variables given in syntactic formulas in the logic spec are treated as meta-logic formulas
       // therefore, quantification over the wohle given formula is added and free variables are assigned type mworld > $o
       val res = unboundVars match {
@@ -527,9 +527,9 @@ object ModalEmbedding extends Embedding {
           variableList foreach{ variable => variable match {
             case (variableName,THF.FunctionTerm("$ki_world",Seq())) =>
               // change "$ki:world" to "mworld"
-              convertedVariables = convertedVariables :+ (variableName, THF.FunctionTerm(worldTypeName,Seq()))
+              convertedVariables = convertedVariables :+ (variableName, str2Fun(worldTypeName))
             case (variableName,THF.FunctionTerm(variableType,Seq())) =>
-              throw new EmbeddingException(s"Invalid type $variableType of $variableName: In semantic formulas in the logic spec, quantification is only allowed over variables of type ki_world") //! rephrase
+              throw new EmbeddingException(s"Invalid type $variableType of $variableName: In semantic formulas in the logic spec, quantification is only allowed over variables of type ki_world")
           }
          }
           val convertedBody:THF.Formula = convertSemanticPreFormula(body,specIndex)
@@ -548,7 +548,6 @@ object ModalEmbedding extends Embedding {
               if (args.nonEmpty) THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, str2Fun(rel), args.head), args.last)
               else THF.FunctionTerm(rel, args)
           }
-            
           case otherName =>
             throw new EmbeddingException(s"Invalid function or predicate in semantic in the logic spec: $otherName given but only ki_accessible is allowed")
         }
@@ -733,7 +732,7 @@ object ModalEmbedding extends Embedding {
                 val annotatedSemantic = annotatedTHF(s"thf('mrel_${unescapeTPTPName(index.pretty)}_semantic$SemanticFormulaCount', axiom, ${convertedFormula.pretty} ).")
                 indexSpecificFormulas = indexSpecificFormulas :+ annotatedSemantic
               }
-              // convert syntactical logic-spec formulas
+              // convert syntactic logic-spec formulas
               else {
                 // count formulas in order to enumerate them
                 SyntacticFormulaCount = SyntacticFormulaCount +1
@@ -747,7 +746,7 @@ object ModalEmbedding extends Embedding {
         }
       } else {
         /////////////////////////////////////////////////////////////
-        // Predefined axiom schemes in none multimodal case
+        // Predefined axiom schemes in mono-modal case
         val modalSystemOrAxiomNameList = if (modalDefaultExists) modalsMapPredefined.default(THF.FunctionTerm("*dummy*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
         val axiomNames = if (isModalSystemName(modalSystemOrAxiomNameList.head)) {
           val systemName = modalSystemOrAxiomNameList.head
@@ -783,13 +782,13 @@ object ModalEmbedding extends Embedding {
           val quantifiedMetaFormula = quantifySyntacticPreFormula(convertedMetaFormula._1, convertedMetaFormula._2)
           val indices = quantifiedMetaFormula.symbols.intersect(modalOperators.map(_.pretty))
           // if no indices were given, the formula is a general axiom scheme
-          if (indices.size == 0 & !isMultiModal) {
+          if (indices.isEmpty & !isMultiModal) {
             GeneralAxiomSchemeCount = GeneralAxiomSchemeCount + 1
             val annotatedAxiom = annotatedTHF(s"thf('axiom_scheme_$GeneralAxiomSchemeCount', axiom, ${quantifiedMetaFormula.pretty} ).")
             generalMetaFormulas = generalMetaFormulas :+ annotatedAxiom
           }
           // in the multimodal case, the formula has to be given for each of the operators
-          else if (indices.size == 0 & isMultiModal) {
+          else if (indices.isEmpty & isMultiModal) {
             GeneralAxiomSchemeCount = GeneralAxiomSchemeCount + 1
             modalOperators.foreach { index =>
               val convertedMetaFormulaIndexSpecific = convertSyntacticPreFormula(axiom, Map.empty, Seq.empty, Some(index))
@@ -800,7 +799,7 @@ object ModalEmbedding extends Embedding {
           }
           // if exactly one index was used, the formula should be given as a definition for the specific operator and not as a general axiom scheme
           else if (indices.size == 1) {
-            throw new EmbeddingException(s"The formula ${quantifiedMetaFormula.pretty} was given as a general meta axiom but only defines one modal operator used in the problem: ${indices.head}. Give formula as an operator specific axiom scheme instead.")
+            throw new EmbeddingException(s"The formula ${quantifiedMetaFormula.pretty} was given as a general axiom scheme but only defines one modal operator used in the problem: ${indices.head}. Give formula as an operator specific axiom scheme instead.")
           }
           // if more than one index was given, formula is an interaction scheme
           if (indices.size > 1) {
