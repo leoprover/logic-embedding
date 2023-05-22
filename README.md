@@ -110,8 +110,8 @@ thf(advanced,logic,(
         $quantification == $cumulative,
         $modalities ==
           [ $modal_system_S5,
-            [#a] == $modal_system_KB,
-            [#b] == $modal_system_K ] ] )).
+            {$box(#a)} == $modal_system_KB,
+            {$box(#b)} == $modal_system_K ] ] )).
 ```
 Here box operator a is system KB, box operator b is K. Of course, also lists of axiom schemes can be used. All further modal operators are S5 (if existent).
 

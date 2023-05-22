@@ -36,13 +36,18 @@ object ModalEmbedding extends Embedding {
       val maybeSpec = getLogicSpecFromProblem(problem.formulas)
       maybeSpec match {
         case Some(spec) if spec.formulaType == TPTP.AnnotatedFormula.FormulaType.TFF =>
-          System.err.println(s"%%% First-order input detected, using modal-logic-to-TFF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}). Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
-          /* create new parameter set */
-          var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
-          if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
-          if (embeddingOptions.contains(ModalEmbeddingOption.EMPTYDOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.EMPTYDOMAINS
-          if (embeddingOptions.contains(ModalEmbeddingOption.LOCALEXTENSION)) parameters = parameters + FOMLToTXFEmbeddingParameter.LOCALEXTENSION
-          FirstOrderManySortedToTXFEmbedding.apply(problem, parameters)
+          // Fallback to HOL embedding if problem
+          // contains extended specification entries (interaction axioms, meta-axioms, etc....)
+          if (testSpecForExtendedEntries(spec)) new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+          else {
+            System.err.println(s"%%% First-order input detected, using modal-logic-to-TFF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}). Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
+            /* create new parameter set */
+            var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
+            if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
+            if (embeddingOptions.contains(ModalEmbeddingOption.EMPTYDOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.EMPTYDOMAINS
+            if (embeddingOptions.contains(ModalEmbeddingOption.LOCALEXTENSION)) parameters = parameters + FOMLToTXFEmbeddingParameter.LOCALEXTENSION
+            FirstOrderManySortedToTXFEmbedding.apply(problem, parameters)
+          }
         case _ => new ModalEmbeddingImpl(problem, embeddingOptions).apply()
       }
     }
@@ -1444,6 +1449,24 @@ object ModalEmbedding extends Embedding {
       }
     }
 
+  }
+
+  // Check if the logic spec contains interactions or other meta-axioms/-properties.
+  private[this] def testSpecForExtendedEntries(spec: TPTP.AnnotatedFormula): Boolean = {
+    import leo.modules.tptputils.SyntaxTransform.transformAnnotatedFormula
+    val specTHF = transformAnnotatedFormula(TPTP.AnnotatedFormula.FormulaType.THF, spec)
+    var result = false
+    specTHF.formula match {
+      case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(name, Seq()), THF.Tuple(spec0))) if Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal") contains name =>
+        spec0 foreach {
+          case THF.BinaryFormula(THF.==, THF.FunctionTerm("$modalities", Seq()), rhs) =>
+            val (_, _, mapFormulas, metaAxioms) = parseTHFModalSpecRHS(rhs)
+            if (mapFormulas.nonEmpty || metaAxioms.nonEmpty) result = true
+          case _ => () // NOP
+        }
+        result
+      case _ => false
+    }
   }
 
 }
