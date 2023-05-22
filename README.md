@@ -100,7 +100,7 @@ tell.
 
 ### Extended specifications
 
-#### Modal logic `$modal`
+#### Modal logic `$modal`: Per-modality specification
 
 Multiple modal operators are defined like ...
 ```
@@ -115,6 +115,8 @@ thf(advanced,logic,(
 ```
 Here box operator a is system KB, box operator b is K. Of course, also lists of axiom schemes can be used. All further modal operators are S5 (if existent).
 
+#### Modal logic `$modal`: Per-type quantification specification
+
 Distinct quantification semantics for each type are defined like ...
 ```
 thf(quantification,logic,(
@@ -126,6 +128,24 @@ thf(quantification,logic,(
         $modalities == $modal_system_S5 ] )).
 ```
 Here, every quantification over variables of type `human_type` are varying domain, all others constant domain.
+
+#### Modal logic `$modal`: Including interaction axiom schemes
+
+Axiom schemas acting as interaction axioms between different modalities, can simply
+be added as part of the `$modality` entry:
+```
+tff(modal_system,logic,
+    $modal == 
+      [ $constants == $rigid,
+        $quantification == $cumulative,
+        $modalities == [
+          {$box(#always)} == $modal_system_S4,
+          {$box(#load)} == $modal_system_K,
+          {$box(#shoot)} == $modal_system_K,
+			    {$box(#always)} @ (P) => {$box(#load)} @ (P),
+			    {$box(#always)} @ (P) => {$box(#shoot)} @ (P) ] ] ).
+```
+
 
 
 ## Usage
