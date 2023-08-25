@@ -4,6 +4,8 @@ package leo.modules.embeddings
  * Collection of definitions that may be relevant for different modal-like embeddings.
  */
 trait ModalEmbeddingLike {
+  protected final val synonymsForBox: Seq[String] = Seq("$box","$necessary","$obligatory","$knows","$believes")
+  protected final val synonymsForDiamond: Seq[String] = Seq("$dia","$possible","$permissible","$canKnow","$canBelieve")
 
   protected sealed abstract class Rigidity
   protected final case object Rigid extends Rigidity

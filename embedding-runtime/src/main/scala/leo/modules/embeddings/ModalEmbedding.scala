@@ -221,11 +221,11 @@ object ModalEmbedding extends Embedding {
               case THF.NonclassicalLongOperator(name, index, parameters) =>
                 if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
                 name match {
-                  case "$box" | "$necessary" | "$obligatory" | "$knows" | "$believes" => index match {
+                  case x if synonymsForBox.contains(x) => index match {
                       case Some(index0) => mboxIndexed(index0)
                       case None => str2Fun("mbox")
                     }
-                  case "$dia" | "$possible" | "$permissible" | "$canKnow" | "$canBelieve" => index match {
+                  case x if synonymsForDiamond.contains(x) => index match {
                     case Some(index0) => mdiaIndexed(index0)
                     case None => str2Fun("mdia")
                   }
@@ -385,7 +385,7 @@ object ModalEmbedding extends Embedding {
               case THF.NonclassicalLongOperator(name, index, parameters) =>
                 if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
                 name match {
-                  case "$box" | "$necessary" | "$obligatory" | "$knows" | "$believes" => index match {
+                  case x if synonymsForBox.contains(x) => index match {
                       case Some(index0) => specIndex match {
                         case Some (value) => if (escapeModalIndex(index0) == value) mboxIndexed (index0)
                            else throw new EmbeddingException (s"Index of Modal Operator ${connective.pretty} in Modal Spec doesn't match the Index (${value.pretty}) it defines.")
@@ -396,7 +396,7 @@ object ModalEmbedding extends Embedding {
                         case None => str2Fun("mbox")
                       }
                   }
-                  case "$dia" | "$possible" | "$permissible" | "$canKnow" | "$canBelieve" => index match {
+                  case x if synonymsForDiamond.contains(x) => index match {
                     case Some(index0) => specIndex match {
                       case Some(value) => if (escapeModalIndex(index0) == value) mdiaIndexed(index0)
                         else throw new EmbeddingException(s"Index of Modal Operator ${connective.pretty} in Modal Spec doesn't match the Index ${value.pretty} it defines.")
@@ -1418,7 +1418,7 @@ object ModalEmbedding extends Embedding {
                     val index0 = lhs match {
                       case THF.NonclassicalPolyaryFormula(THF.NonclassicalBox(Some(index)), Seq()) => index
                       case THF.NonclassicalPolyaryFormula(THF.NonclassicalLongOperator(cname, Some(index), Seq()), Seq())
-                       if Seq("$box", "$necessary" , "$obligatory" , "$knows").contains(cname) => index
+                       if synonymsForBox.contains(cname) => index
                       case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
                     }
                     val index = escapeModalIndex(index0)
@@ -1432,7 +1432,7 @@ object ModalEmbedding extends Embedding {
                     val index0 = lhs match {
                       case THF.NonclassicalPolyaryFormula(THF.NonclassicalBox(Some(index)), Seq()) => index
                       case THF.NonclassicalPolyaryFormula(THF.NonclassicalLongOperator(cname, Some(index), Seq()), Seq())
-                        if Seq("$box", "$necessary", "$obligatory", "$knows").contains(cname) => index
+                        if synonymsForBox.contains(cname) => index
                       case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
                     }
                     val index = escapeModalIndex(index0)

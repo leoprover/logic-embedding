@@ -8,7 +8,7 @@ import leo.modules.input.TPTPParser.annotatedTFF
 
 import scala.annotation.unused
 
-object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingLike {
+object FirstOrderManySortedToTXFEmbedding extends Embedding {
 
   object FOMLToTXFEmbeddingParameter extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
@@ -19,7 +19,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.2.3"
+  override final val version: String = "1.2.4"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, Seq("$modalities", "$quantification", "$constants") , specs)
@@ -256,11 +256,11 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           TFF.QuantifiedFormula(quantifier, variableList, convertedBody)
         case TFF.NonclassicalPolyaryFormula(connective, args) => args match {
           case Seq(body) => connective match {
-            case TFF.NonclassicalLongOperator(name, idx, parameters) if Seq("$box", "$necessary").contains(name) =>
+            case TFF.NonclassicalLongOperator(name, idx, parameters) if synonymsForBox.contains(name) =>
               if (parameters.nonEmpty) throw new EmbeddingException(s"Illegal arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
               else convertBoxModality(body, boundVars, world = worldPlaceholder, index = idx)
 
-            case TFF.NonclassicalLongOperator(name, idx, parameters) if Seq("$dia", "$possible").contains(name) =>
+            case TFF.NonclassicalLongOperator(name, idx, parameters) if synonymsForDiamond.contains(name) =>
               if (parameters.nonEmpty) throw new EmbeddingException(s"Illegal arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
               else convertDiaModality(body, boundVars, world = worldPlaceholder, index = idx)
 
@@ -603,7 +603,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
                     val index0 = lhs match {
                       case TFF.FormulaTerm(TFF.NonclassicalPolyaryFormula(TFF.NonclassicalBox(Some(index)), Seq())) => index
                       case TFF.FormulaTerm(TFF.NonclassicalPolyaryFormula(TFF.NonclassicalLongOperator(cname, Some(index), Seq()), Seq()))
-                        if Seq("$box", "$necessary", "$obligatory", "$knows").contains(cname) => index
+                        if synonymsForBox.contains(cname) => index
                       case _ => throw new EmbeddingException(s"Modality specification did not start with '[#idx] == ...' or '{#box(#idx)} == ...'.")
                     }
                     val index = escapeIndex(index0)
