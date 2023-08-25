@@ -145,6 +145,7 @@ object DyadicDeonticLogicEmbedding extends Embedding {
               case None => str2Fun(dia)
               case _ => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
             }
+            case THF.NonclassicalCone(_) => throw new EmbeddingException(s"Unsupported connective in $name: '${connective.pretty}'. ")
             case THF.NonclassicalLongOperator(name, index, parameters) =>
               if (index.isEmpty && parameters.isEmpty) {
                 name match {

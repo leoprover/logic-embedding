@@ -79,8 +79,15 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
 
       val result = sortFormulas ++ generatedMetaPreFormulas ++ convertedTypeFormulas ++
         generatedMetaPostFormulas ++ convertedDefinitionFormulas  ++ convertedNonConjectureFormulas ++ convertedConjectureFormulasAsOne
-      TPTP.Problem(problem.includes, result, Map.empty)
+      val extraComments = generateExtraComments(warnings.toSeq, result.headOption,
+        sortFormulas.headOption, generatedMetaPreFormulas.headOption, convertedTypeFormulas.headOption,
+        generatedMetaPostFormulas.headOption, convertedDefinitionFormulas.headOption, convertedNonConjectureFormulas.headOption)
+      val updatedComments = problem.formulaComments.concat(extraComments)
+      TPTP.Problem(problem.includes, result, updatedComments)
     }
+
+    // For warnings that should go inside the output file
+    private[this] val warnings: collection.mutable.Buffer[String] = collection.mutable.Buffer.empty
 
     @inline private[this] val worldTypeName: String = "'$ki_world'"
     @inline private[this] def worldType: TFF.Type = TFF.AtomicType(worldTypeName, Seq.empty)
@@ -270,7 +277,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
           }
           case _ => throw new EmbeddingException(s"Illegal number of arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
         }
-        case TFF.Assignment(_, _) | TFF.MetaIdentity(_, _) | TFF.FormulaVariable(_) => throw new EmbeddingException(s"Unexpected formula '${formula.pretty}' in embedding.")
+        case TFF.FormulaVariable(name) => throw new EmbeddingException(s"Quantification over propositions not supported in first-order modal logic embedding but '${formula.pretty}' found. Use higher-order modal logic embedding instead (using parameter '-p FORCE_HIGHERORDER').")
+        case TFF.Assignment(_, _) | TFF.MetaIdentity(_, _) => throw new EmbeddingException(s"Unexpected formula '${formula.pretty}' in embedding.")
       }
     }
 
@@ -555,7 +563,9 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
           spec0 foreach {
             case TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(propertyName, Seq()), rhs)) =>
               propertyName match {
-                case "$constants" =>
+                case `logicSpecParamNameTermDesignation` =>
+                  warnings.append(s"Parameter '$logicSpecParamNameTermDesignation' currently unsupported; this will probably coincide with global terms.")
+                case `logicSpecParamNameRigidity` =>
                   val (default, map) = parseTFFSpecRHS(rhs)
                   if (default.isDefined) {
                     rigidityDefaultExists = true
@@ -573,7 +583,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$rigidity'")
                     }
                   }
-                case "$quantification" =>
+                case `logicSpecParamNameQuantification` =>
                   val (default, map) = parseTFFSpecRHS(rhs)
                   default match {
                     case Some("$constant") => domainMap = domainMap.withDefaultValue(ConstantDomain)
@@ -592,7 +602,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$modalities" => val (default, map) = parseTFFListSpecRHS(rhs)
+                case `logicSpecParamNameModalities` => val (default, map) = parseTFFListSpecRHS(rhs)
                   if (default.nonEmpty) {
                     modalDefaultExists = true
                     if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {

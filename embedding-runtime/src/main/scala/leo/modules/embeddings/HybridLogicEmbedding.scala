@@ -210,6 +210,7 @@ object HybridLogicEmbedding extends Embedding {
                     nominal(nom)
                     t
                   case Some(t@THF.Variable(_)) => t
+                  case Some(x) =>  throw new EmbeddingException(s"Unexpected parameter in ${connective.pretty}: '${x.pretty}'.")
                   case None => throw new EmbeddingException(s"Mandatory parameter in ${connective.pretty} missing.")
                 }
                 args match {

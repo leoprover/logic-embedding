@@ -533,8 +533,8 @@ object ModalEmbedding extends Embedding {
             case (variableName,THF.FunctionTerm("$ki_world",Seq())) =>
               // change "$ki:world" to "mworld"
               convertedVariables = convertedVariables :+ (variableName, str2Fun(worldTypeName))
-            case (variableName,THF.FunctionTerm(variableType,Seq())) =>
-              throw new EmbeddingException(s"Invalid type $variableType of $variableName: In semantic formulas in the logic spec, quantification is only allowed over variables of type ki_world")
+            case (variableName,variableType) =>
+              throw new EmbeddingException(s"Invalid type '${variableType.pretty}' of $variableName: In semantic formulas in the logic spec, quantification is only allowed over variables of type ki_world")
           }
          }
           val convertedBody:THF.Formula = convertSemanticPreFormula(body,specIndex)
@@ -1368,11 +1368,13 @@ object ModalEmbedding extends Embedding {
     private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
       assert(spec.role == "logic")
       spec.formula match {
-        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(name, Seq()),THF.Tuple(spec0))) if Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal") contains name =>
+        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(name, Seq()),THF.Tuple(spec0))) if allowedModalLogicNames contains name =>
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
-                case "$constants" =>
+                case `logicSpecParamNameTermDesignation` =>
+                  warnings.append(s"Parameter '$logicSpecParamNameTermDesignation' currently unsupported; this will probably coincide with global terms.")
+                case `logicSpecParamNameRigidity` =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   if (default.isDefined) { rigidityDefaultExists = true }
                   default match {
@@ -1388,7 +1390,7 @@ object ModalEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$rigidity'")
                     }
                   }
-                case "$quantification" =>
+                case `logicSpecParamNameQuantification` =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   default match {
                     case Some("$constant") => domainMap = domainMap.withDefaultValue(ConstantDomain)
@@ -1407,7 +1409,7 @@ object ModalEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$modalities" => val (default, mapPredefined, mapFormulas, metaAxioms) = parseTHFModalSpecRHS(rhs)
+                case `logicSpecParamNameModalities` => val (default, mapPredefined, mapFormulas, metaAxioms) = parseTHFModalSpecRHS(rhs)
                   if (default.nonEmpty) {
                     modalDefaultExists = true
                     if (default.forall(spec => isModalSystemName(spec) || isModalAxiomName(spec))) {

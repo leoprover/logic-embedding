@@ -4,19 +4,28 @@ package leo.modules.embeddings
  * Collection of definitions that may be relevant for different modal-like embeddings.
  */
 trait ModalEmbeddingLike {
+  protected final val allowedModalLogicNames: Seq[String] = Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal", "$doxastic_modal")
   protected final val synonymsForBox: Seq[String] = Seq("$box","$necessary","$obligatory","$knows","$believes")
   protected final val synonymsForDiamond: Seq[String] = Seq("$dia","$possible","$permissible","$canKnow","$canBelieve")
 
+  protected final val logicSpecParamNameTermDesignation = "$terms"
+  protected sealed abstract class TermDesignation
+  protected final case object Local extends TermDesignation
+  protected final case object Global extends TermDesignation
+
+  protected final val logicSpecParamNameRigidity = "$designation"
   protected sealed abstract class Rigidity
   protected final case object Rigid extends Rigidity
   protected final case object Flexible extends Rigidity
 
+  protected final val logicSpecParamNameQuantification = "$domains"
   protected sealed abstract class DomainType
   protected final case object ConstantDomain extends DomainType
   protected final case object VaryingDomain extends DomainType
   protected final case object CumulativeDomain extends DomainType
   protected final case object DecreasingDomain extends DomainType
 
+  protected final val logicSpecParamNameModalities = "$modalities"
   protected final def isModalAxiomName(name: String): Boolean = name.startsWith("$modal_axiom_")
   protected final def isModalSystemName(name: String): Boolean = name.startsWith("$modal_system_")
 
