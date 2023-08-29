@@ -24,7 +24,7 @@ object ModalLogicEmbeddingOld extends Embedding {
   override final def embeddingParameter: ModalLogicEmbeddingOldOption.type = ModalLogicEmbeddingOldOption
 
   override final def name: String = "modal_old"
-  override final def version: String = "1.5.6"
+  override final def version: String = "1.5.7"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -1107,7 +1107,7 @@ object ModalLogicEmbeddingOld extends Embedding {
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
-                case "$constants" =>
+                case "$constants" | "$designation" =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   default match {
                     case Some("$rigid") => state.setDefault(RIGIDITY, RIGIDITY_RIGID)
@@ -1124,7 +1124,7 @@ object ModalLogicEmbeddingOld extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$rigidity'")
                     }
                   }
-                case "$quantification" =>
+                case "$quantification" | "$domains" =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   default match {
                     case Some("$constant") => state.setDefault(DOMAIN, DOMAIN_CONSTANT)
@@ -1163,6 +1163,8 @@ object ModalLogicEmbeddingOld extends Embedding {
                       else throw new EmbeddingException(s"Unknown modality specification: ${modalspec.mkString("[",",", "]")}")
                     }
                   }
+                case "$terms" =>
+                  warnings.append(s"Parameter '$$terms' currently unsupported; this will probably coincide with global terms.")
                 case _ => throw new EmbeddingException(s"Unknown modal logic semantics property '$propertyName'")
               }
             case s => throw new EmbeddingException(s"Malformed logic specification entry: ${s.pretty}")
