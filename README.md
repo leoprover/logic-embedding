@@ -17,30 +17,30 @@ logic specification format and the problem syntax.
 
 Currently, the following logics (logic families) are supported:
 
-| Logic family name  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `$modal`           | Normal (quantified) multi-modal logics, with box and diamond operator as `{$box}` and `{$diamond}`, respectively. Short forms: `[.]` for box and `<.>` for diamond. Modal operators can be indexed in both long form, e.g., `{$box(#someindex)}`.                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `$alethic_modal`   | Same as `$modal` only that the operators are called `{$necessary}` and `{$possible}` instead (short forms are identical).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `$deontic_modal`   | Same as `$modal` only that the operators are called `{$obligatory}` and `{$permissible}` instead (short forms are identical).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Logic family name  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `$modal`           | Normal (quantified) multi-modal logics, with box and diamond operator as `{$box}` and `{$dia}`, respectively. Short forms: `[.]` for box and `<.>` for diamond. Modal operators can be indexed in long form, e.g., `{$box(#someindex)}`.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `$alethic_modal`   | Same as `$modal` only that the operators are called `{$necessary}` and `{$possible}` instead (short forms are identical).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `$deontic_modal`   | Same as `$modal` only that the operators are called `{$obligatory}` and `{$permissible}` instead (short forms are identical).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `$epistemic_modal` | Same as `$modal` only that the operators are called `{$knows}` and `{$canKnow}` instead (short forms are identical).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `$$hybrid`         | Hybrid logics extend the modal logic family $modal with the notion of nominals, a special kind of atomic formula symbol that is true only in a specific world [2]. The logics represented by $$hybrid are first-order variants of H(E, @, ↓). A nominal symbol `n` is represented as `{$$nominal} @ (n)`, the shift operator @s as `{$$shift(#s)}`, and the bind operator ↓ x as `{$$bind(#X)}`. All other aspects are analogous to the modal logic representation above.                                                                                                                                                                         |
-| `$$pal`            | Public announcement logic (PAL) is a propositional epistemic logic that allows for reasoning about knowledge. In contrast to $modal, PAL is a dynamic logic that supports updating the knowledge of agents via so-called announcement operators. The knowledge operator Ki is given by `{$$knows(#i)}`, the common knowledge operator CA , with A a set of agents, by `{$$common($$group := [...])}`, and the announcement [!ϕ] is represented as `{$$announce($$formula := phi)}`.                                                                                                                                                               |
+| `$$hybrid`         | Hybrid logics extend the modal logic family $modal with the notion of nominals, a special kind of atomic formula symbol that is true only in a specific world [2]. The logics represented by $$hybrid are first-order variants of H(E, @, ↓). A nominal symbol `n` is represented as `{$$nominal} @ (n)`, the shift operator @s as `{$$shift(#s)}`, and the bind operator ↓ x as `{$$bind(#X)}`. All other aspects are analogous to the modal logic representation above.                                                                                                                                                                        |
+| `$$pal`            | Public announcement logic (PAL) is a propositional epistemic logic that allows for reasoning about knowledge. In contrast to $modal, PAL is a dynamic logic that supports updating the knowledge of agents via so-called announcement operators. The knowledge operator Ki is given by `{$$knows(#i)}`, the common knowledge operator CA , with A a set of agents, by `{$$common($$group := [...])}`, and the announcement [!ϕ] is represented as `{$$announce($$formula := phi)}`.                                                                                                                                                              |
 | `$$ddl`            | Deontic logics are formalisms for reasoning over norms, obligations, permissions and prohibitions. In contrast to modal logics used for this purpose (e.g., modal logic D), dyadic deontic logics (DDLs), named $$ddl, offer a more sophisticated representation of conditional norms using a dyadic obligation operator O(ϕ/ψ). They address paradoxes of other deontic logics in the context of so-called contrary-to-duty (CTD) situations. The concrete DDLs supported are the propositional system by Carmo and Jones and Åqvist’s propositional system E. The dyadic deontic operator O is represented by `{$$obl}` (short for obligatory). |
-| `$$normative`      | Normative meta form, a semantically underspecified format for expressing deontic logic concepts. Can be translated into standard deontic logic (SDL/modal logics) or DDL (see above) as desired, see [^1] for details. Conditional obligations, permissions, prohibitions and expressied via `{$$obligation} @ (body, head)`, `{$$permission} @ (body, head)`, and `{$$prohibition} @ (body, head)`, respectively. Counts-as norms (constitutional norms) are expressed via `{$$constitutive} @ (body, head)`. It depends on the target logic how these concepts are compiled into a concrete logical format.                                     |
+| `$$normative`      | Normative meta form, a semantically underspecified format for expressing deontic logic concepts. Can be translated into standard deontic logic (SDL/modal logics) or DDL (see above) as desired, see [^1] for details. Conditional obligations, permissions, prohibitions and expressied via `{$$obligation} @ (body, head)`, `{$$permission} @ (body, head)`, and `{$$prohibition} @ (body, head)`, respectively. Counts-as norms (constitutional norms) are expressed via `{$$constitutive} @ (body, head)`. It depends on the target logic how these concepts are compiled into a concrete logical format.                                    |
 
 ### Logic specifications
 Non-classical logic languages quite commonly admit different concrete logics using the same syntax. In order to chose the exact logic intended for the input
 problem, suitable parameters are given as properties to the logic specification:
 
-| Logic family name | Parameter         | Description                                                                                                                                                                                                                                                                                                                                                     |
-|-------------------|-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `$modal`          | `$quantification` | Selects whether quantification semantics is varying domains, constant domains, cumulative domains or decreasing domains.<br><br>Accepted values: `$varying`, `$constant`, `$cumulative`, `$decreasing`                                                                                                                                                          |
-|                   | `$constants`      | Selects whether constant and functions symbols are interpreted as rigidor flexible.<br><br> Accepted values: `$rigid`, `$flexible`                                                                                                                                                                                                                              |
-|                   | `$modalities`     | Selects the properties for the modal operators.<br><br> Accepted values, for each modality: `$modal_system_X` where `X` ∈ {`K`, `KB`, `K4`, `K5`, `K45`, `KB5`, `D`, `DB`, `D4`, `D5`, `D45`, `T`, `B`, `S4`, `S5`, `S5U`} <br>_or a list of axiom schemes_<br> [`$modal axiom X1` , ..., `$modal axiom Xn` ] `Xi` ∈ {`K`, `T`, `B`, `D`, `4`, `5`, `CD`, `C4`} |
-| `$$hybrid`        | _same as `$modal`_ |                                                                                                                                                                                                                                                                                                                                                                 |
-| `$$pal`           | _none_            |                                                                                                                                                                                                                                                                                                                                                                 |
-| `$$ddl`           | `$$system`        | Selects which DDL logic system is employed: Carmo and Jones or Åqvist's system E.<br><br>Accepted values: `$$carmoJones` or `$$aqvistE`                                                                                                                                                                                                                         |
-| `$$normative`     | `$logic`        | Selects which deontic logic system should be used for compiling the semantically underspecified statements into concrete expressions. <br><br> Accepted values: `$$sdl` for SDL, `$$carmoJones` for the DDL of Carmo and Jones, `$$aqvistE` for Aqvist's DDL E                                                                                             |                                                                                                                                                                                                                                                                                                                                                            |
+| Logic family name | Parameter          | Description                                                                                                                                                                                                                                                                                                                                                    |
+|-------------------|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `$modal`          | `$domains`         | Selects whether quantification semantics is varying domains, constant domains, cumulative domains or decreasing domains.<br><br>Accepted values: `$varying`, `$constant`, `$cumulative`, `$decreasing`                                                                                                                                                         |
+|                   | `$designation`     | Selects whether non-logical symbols (constants and function symbols) have rigid or flexible designation (i.e., the same interpretation in all worlds, or possibly different ones in different worlds).<br><br> Accepted values: `$rigid`, `$flexible`                                                                                                          |
+|                   | `$modalities`      | Selects the properties for the modal operators.<br><br> Accepted values, for each modality: `$modal_system_X` where `X` ∈ {`K`, `KB`, `K4`, `K5`, `K45`, `KB5`, `D`, `DB`, `D4`, `D5`, `D45`, `T`, `B`, `S4`, `S5`, `S5U`} <br>_or a list of axiom schemes_<br> [`$modal axiom X1` , ..., `$modal axiom Xn` ] `Xi` ∈ {`K`, `T`, `B`, `D`, `4`, `5`, `CD`, `C4`} |
+| `$$hybrid`        | _same as `$modal`_ |                                                                                                                                                                                                                                                                                                                                                                |
+| `$$pal`           | _none_             |                                                                                                                                                                                                                                                                                                                                                                |
+| `$$ddl`           | `$$system`         | Selects which DDL logic system is employed: Carmo and Jones or Åqvist's system E.<br><br>Accepted values: `$$carmoJones` or `$$aqvistE`                                                                                                                                                                                                                        |
+| `$$normative`     | `$logic`           | Selects which deontic logic system should be used for compiling the semantically underspecified statements into concrete expressions. <br><br> Accepted values: `$$sdl` for SDL, `$$carmoJones` for the DDL of Carmo and Jones, `$$aqvistE` for Aqvist's DDL E                                                                                                 |                                                                                                                                                                                                                                                                                                                                                            |
 
 ### Examples
 
@@ -50,8 +50,8 @@ modal logic model is non-cumulative.
 
 ```
   tff(modal_k5, logic, $modal == [
-     $constants == $rigid,
-     $quantification == $decreasing,
+     $designation == $rigid,
+     $domains == $decreasing,
      $modalities == [$modal_axiom_K, $modal_axiom_5]
    ] ).
 
@@ -62,8 +62,8 @@ modal logic model is non-cumulative.
 
 ```
   tff(hybrid_s5,logic, $$hybrid == [
-      $constants == $rigid,
-      $quantification == $varying,
+      $designation == $rigid,
+      $domains == $varying,
       $modalities == $modal_system_S5
     ] ).
 
@@ -77,7 +77,7 @@ modal logic model is non-cumulative.
 #### Logic `$$pal`
 
 ```
-tff(pal, logic, $$pal == []).
+tff(pal, logic, $$pal).
 
 tff(c, conjecture, {$$announce($$formula := p)} @ ( {$$common($$group := [a,b,c,k])} @ (p) )).
 ```
@@ -106,8 +106,8 @@ Multiple modal operators are defined like ...
 ```
 thf(advanced,logic,(
     $modal ==
-      [ $constants == $rigid,
-        $quantification == $cumulative,
+      [ $designation == $rigid,
+        $domains == $cumulative,
         $modalities ==
           [ $modal_system_S5,
             {$box(#a)} == $modal_system_KB,
@@ -121,8 +121,8 @@ Distinct quantification semantics for each type are defined like ...
 ```
 thf(quantification,logic,(
     $modal ==
-      [ $constants == $rigid,
-        $quantification ==
+      [ $designation == $rigid,
+        $domains ==
           [ $constant,
             human_type == $varying ],
         $modalities == $modal_system_S5 ] )).
@@ -132,12 +132,12 @@ Here, every quantification over variables of type `human_type` are varying domai
 #### Modal logic `$modal`: Including interaction axiom schemes
 
 Axiom schemas acting as interaction axioms between different modalities, can simply
-be added as part of the `$modality` entry:
+be added as part of the `$modality` entry (see also [^4]):
 ```
 tff(modal_system,logic,
     $modal == 
-      [ $constants == $rigid,
-        $quantification == $cumulative,
+      [ $designation == $rigid,
+        $domains == $cumulative,
         $modalities == [
           {$box(#always)} == $modal_system_S4,
           {$box(#load)} == $modal_system_K,
@@ -196,3 +196,4 @@ This version makes use of the `scala-tptp-parser` library from leoprover/scala-t
 [^1]: A. Steen, D. Fuenmayor. Bridging between LegalRuleML and TPTP for Automated Normative Reasoning. In: 6th International Joint Conference on Rules and Reasoning Berlin, 26-28 September 2022, Lecture Notes in Computer Science, Vol.13752, pp. 244--260, Springer, 2022. DOI: https://doi.org/10.1007/978-3-031-21541-4_16.
 [^2]: A. Steen. An Extensible Logic Embedding Tool for Lightweight Non-Classical Reasoning. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). CEUR Workshop Proceedings, Vol. 3201, CEUR-WG.org, 2022. Available at https://ceur-ws.org/Vol-3201/paper13.pdf.
 [^3]: A. Steen, D. Fuenmayor, T. Gleißner, G. Sutcliffe and C. Benzmüller. Automated Reasoning in Non-classical Logics in the TPTP World. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). CEUR Workshop Proceedings, Vol. 3201, CEUR-WG.org, 2022. Available at https://ceur-ws.org/Vol-3201/paper11.pdf.
+[^4]: M. Taprogge, A. Steen. Flexible Automation of Quantified Multi-Modal Logics with Interaction. In KI 2023: Advances in Artificial Intelligence. 46th German Conference on AI, Berlin, Germany, September 26–29, 2023, Proceedings, LNCS, Vol. 14236, Springer, 2023. 
