@@ -5,10 +5,13 @@ package embeddings
 import datastructures.{FlexMap, TPTP}
 import TPTP.{AnnotatedFormula, THF}
 
-object HybridLogicEmbedding extends Embedding {
+import scala.annotation.unused
+
+object HybridLogicEmbedding extends Embedding with ModalEmbeddingLike {
   object HybridLogicEmbeddingOption extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
     //    type ModalEmbeddingOption = Value
+    @unused
     final val MONOMORPHIC, POLYMORPHIC,
     MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
     DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL = Value
@@ -18,22 +21,10 @@ object HybridLogicEmbedding extends Embedding {
   override final def embeddingParameter: HybridLogicEmbeddingOption.type = HybridLogicEmbeddingOption
 
   override final def name: String = "$$hybrid"
-  override final def version: String = "1.0"
+  override final def version: String = "1.0.1"
 
-  private[this] final val defaultConstantSpec = "$rigid"
-  private[this] final val defaultQuantificationSpec = "$constant"
-  private[this] final val defaultModalitiesSpec = "$modal_system_K"
-  override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated = {
-    import modules.input.TPTPParser.annotatedTHF
-    val spec: StringBuilder = new StringBuilder
-    spec.append("thf(logic_spec, logic, (")
-    spec.append("$$hybrid == [")
-    spec.append("$constants == "); spec.append(specs.getOrElse("$constants", defaultConstantSpec)); spec.append(",")
-    spec.append("$quantification == "); spec.append(specs.getOrElse("$quantification", defaultQuantificationSpec)); spec.append(",")
-    spec.append("$modalities == "); spec.append(specs.getOrElse("$modalities", defaultModalitiesSpec))
-    spec.append("] )).")
-    annotatedTHF(spec.toString)
-  }
+  override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
+    generateTHFSpecification(name, logicSpecParamNames, specs)
 
   override final def apply(problem: TPTP.Problem,
                            embeddingOptions: Set[HybridLogicEmbeddingOption.Value]): TPTP.Problem =
@@ -97,7 +88,7 @@ object HybridLogicEmbedding extends Embedding {
       TPTP.Problem(problem.includes, result, Map.empty)
     }
 
-    def convertDefinitionFormula(formula: AnnotatedFormula): AnnotatedFormula = {
+    private[this] def convertDefinitionFormula(formula: AnnotatedFormula): AnnotatedFormula = {
       formula match {
         case TPTP.THFAnnotated(name, "definition", THF.Logical(THF.BinaryFormula(THF.Eq, THF.FunctionTerm(symbolName, Seq()), body)), annotations) =>
           TPTP.THFAnnotated(name, "definition", THF.Logical(THF.BinaryFormula(THF.Eq, THF.FunctionTerm(symbolName, Seq()), convertFormula(body))), annotations)
@@ -105,7 +96,7 @@ object HybridLogicEmbedding extends Embedding {
       }
     }
 
-    def convertAnnotatedFormula(formula: AnnotatedFormula): AnnotatedFormula = {
+    private[this] def convertAnnotatedFormula(formula: AnnotatedFormula): AnnotatedFormula = {
       import leo.modules.tptputils._
       formula match {
         case TPTP.THFAnnotated(name, role, TPTP.THF.Logical(formula), annotations) =>
@@ -179,7 +170,7 @@ object HybridLogicEmbedding extends Embedding {
         case THF.NonclassicalPolyaryFormula(connective, args) =>
           connective match {
             case THF.NonclassicalLongOperator(name, index, parameters) => name match {
-              case "$box" | "$necessary" | "$obligatory" | "$knows" =>
+              case x if synonymsForBox.contains(x) =>
                 if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
                 val convertedConnective = index match {
                   case Some(index0) => mboxIndexed(index0)
@@ -187,7 +178,7 @@ object HybridLogicEmbedding extends Embedding {
                 }
                 val convertedArgs = args.map(convertFormula)
                 convertedArgs.foldLeft(convertedConnective)(THF.BinaryFormula(THF.App, _, _))
-              case "$dia" | "$possible" | "$permissible" =>
+              case x if synonymsForDiamond.contains(x) =>
                 if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in diamond operator, but parameters '${parameters.toString()}' was given.")
                 val convertedConnective = index match {
                   case Some(index0) => mdiaIndexed(index0)
@@ -822,7 +813,7 @@ object HybridLogicEmbedding extends Embedding {
       }
     }
 
-    lazy val semanticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
+    private[this] lazy val semanticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.annotatedTHF
       Map(
         "$modal_axiom_K" -> None,
@@ -853,7 +844,7 @@ object HybridLogicEmbedding extends Embedding {
         // TODO: More axiom schemes
       )
     }
-    lazy val syntacticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
+    private[this] lazy val syntacticAxiomTable: Map[String, Option[TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.{annotatedTHF, thf}
 
       Map(
@@ -933,7 +924,7 @@ object HybridLogicEmbedding extends Embedding {
       )
     }
 
-    lazy val indexedSyntacticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
+    private[this] lazy val indexedSyntacticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.{annotatedTHF, thf}
       Map(
         "$modal_axiom_K" -> None,
@@ -1054,7 +1045,7 @@ object HybridLogicEmbedding extends Embedding {
       )
     }
 
-    lazy val indexedSemanticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
+    private[this] lazy val indexedSemanticAxiomTable: Map[String, Option[THF.Formula => TPTP.AnnotatedFormula]] = {
       import modules.input.TPTPParser.annotatedTHF
       Map(
         "$modal_axiom_K" -> None,
@@ -1087,7 +1078,7 @@ object HybridLogicEmbedding extends Embedding {
     }
 
     private def isModalSystemName(name: String): Boolean = name.startsWith("$modal_system_")
-    lazy val modalSystemTable: Map[String, Seq[String]] = Map(
+    private[this] lazy val modalSystemTable: Map[String, Seq[String]] = Map(
       "$modal_system_K" -> Seq("$modal_axiom_K"),
       "$modal_system_K4" -> Seq("$modal_axiom_K", "$modal_axiom_4"),
       "$modal_system_K5" -> Seq("$modal_axiom_K", "$modal_axiom_5"),
@@ -1123,7 +1114,9 @@ object HybridLogicEmbedding extends Embedding {
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
-                case "$constants" =>
+                case `logicSpecParamNameTermDesignation` =>
+                  throw new EmbeddingException(s"Parameter '$logicSpecParamNameTermDesignation' currently unsupported; omitting it will probably coincide with global terms.")
+                case `logicSpecParamNameRigidity` =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   default match {
                     case Some("$rigid") => state.setDefault(RIGIDITY, RIGIDITY_RIGID)
@@ -1140,7 +1133,7 @@ object HybridLogicEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$rigidity'")
                     }
                   }
-                case "$quantification" =>
+                case `logicSpecParamNameQuantification` =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   default match {
                     case Some("$constant") => state.setDefault(DOMAIN, DOMAIN_CONSTANT)
@@ -1159,7 +1152,7 @@ object HybridLogicEmbedding extends Embedding {
                       case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
                     }
                   }
-                case "$modalities" => val (default, map) = parseTHFListSpecRHS(rhs)
+                case `logicSpecParamNameModalities` => val (default, map) = parseTHFListSpecRHS(rhs)
                   if (default.nonEmpty) state.setDefault(MODALS, default)
                   map foreach { case (name, modalspec) =>
                     val realIndex = name match {
