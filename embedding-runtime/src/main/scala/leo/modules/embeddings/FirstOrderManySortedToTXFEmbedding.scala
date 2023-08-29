@@ -8,7 +8,7 @@ import leo.modules.input.TPTPParser.annotatedTFF
 
 import scala.annotation.unused
 
-object FirstOrderManySortedToTXFEmbedding extends Embedding {
+object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingLike {
 
   object FOMLToTXFEmbeddingParameter extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
@@ -19,10 +19,10 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.2.4"
+  override final val version: String = "1.2.5"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
-    generateTFFSpecification(name, Seq("$modalities", "$quantification", "$constants") , specs)
+    generateTFFSpecification(name, logicSpecParamNames, specs)
 
   override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
     new FirstOrderManySortedToTXFEmbeddingImpl(problem, embeddingOptions).apply()
@@ -35,8 +35,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
   /////////////// Embedding implementation BEGIN
   /////////////////////////////////////////////////////////////////////////////////////////////
   private[this] final class FirstOrderManySortedToTXFEmbeddingImpl(problem: TPTP.Problem,
-                                                                   embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value])
-    extends ModalEmbeddingLike {
+                                                                   embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]) {
 
     import FOMLToTXFEmbeddingParameter._
 
@@ -277,7 +276,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding {
           }
           case _ => throw new EmbeddingException(s"Illegal number of arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
         }
-        case TFF.FormulaVariable(name) => throw new EmbeddingException(s"Quantification over propositions not supported in first-order modal logic embedding but '${formula.pretty}' found. Use higher-order modal logic embedding instead (using parameter '-p FORCE_HIGHERORDER').")
+        case TFF.FormulaVariable(_) => throw new EmbeddingException(s"Quantification over propositions not supported in first-order modal logic embedding but '${formula.pretty}' found. Use higher-order modal logic embedding instead (using parameter '-p FORCE_HIGHERORDER').")
         case TFF.Assignment(_, _) | TFF.MetaIdentity(_, _) => throw new EmbeddingException(s"Unexpected formula '${formula.pretty}' in embedding.")
       }
     }

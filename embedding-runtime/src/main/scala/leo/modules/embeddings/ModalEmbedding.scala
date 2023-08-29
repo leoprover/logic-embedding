@@ -7,7 +7,7 @@ import TPTP.{AnnotatedFormula, THF, THFAnnotated}
 
 import scala.annotation.unused
 
-object ModalEmbedding extends Embedding {
+object ModalEmbedding extends Embedding with ModalEmbeddingLike {
   object ModalEmbeddingOption extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
     //    type ModalEmbeddingOption = Value
@@ -21,10 +21,10 @@ object ModalEmbedding extends Embedding {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "modal"
-  override final def version: String = "2.1.0"
+  override final def version: String = "2.1.1"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
-    generateTHFSpecification(name, Seq("$modalities", "$quantification", "$constants"), specs)
+    generateTHFSpecification(name, logicSpecParamNames, specs)
 
   override final def apply(problem: TPTP.Problem,
                   embeddingOptions: Set[ModalEmbeddingOption.Value]): TPTP.Problem = {
@@ -62,8 +62,7 @@ object ModalEmbedding extends Embedding {
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class ModalEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[ModalEmbeddingOption.Value])
-    extends ModalEmbeddingLike {
+  private[this] final class ModalEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[ModalEmbeddingOption.Value]) {
 
     import ModalEmbeddingOption._
     import scala.collection.mutable
@@ -276,7 +275,7 @@ object ModalEmbedding extends Embedding {
           val result = variableList.foldRight(appliedBody)(mkSingleQuantified(quantifier, safeName))
           worldAbstraction(result, safeName)
 
-        case THF.ConnectiveTerm(conn) =>
+        case THF.ConnectiveTerm(_) =>
           worldAbstraction(formula, boundVars) // connectives are rigid: so do a world abstraction
 
         // TPTP special cases BEGIN
@@ -471,7 +470,7 @@ object ModalEmbedding extends Embedding {
           val result = variableList.foldRight(appliedBody)(mkSingleQuantified(quantifier, safeName))
           (worldAbstraction(result, safeName),unboundVars)
 
-        case THF.ConnectiveTerm(conn) =>
+        case THF.ConnectiveTerm(_) =>
           val vars = boundVars ++ unboundVars0.zip(Seq.fill(unboundVars0.length)(metaFormulaType)).toMap
           (worldAbstraction(formula, vars),unboundVars0) // connectives are rigid: so do a world abstraction
 
@@ -529,13 +528,12 @@ object ModalEmbedding extends Embedding {
 
         case THF.QuantifiedFormula(quantifier, variableList, body) =>
           var convertedVariables: Seq[(String, THF.Type)] = Seq.empty
-          variableList foreach{ variable => variable match {
+          variableList foreach {
             case (variableName,THF.FunctionTerm("$ki_world",Seq())) =>
               // change "$ki:world" to "mworld"
               convertedVariables = convertedVariables :+ (variableName, str2Fun(worldTypeName))
             case (variableName,variableType) =>
               throw new EmbeddingException(s"Invalid type '${variableType.pretty}' of $variableName: In semantic formulas in the logic spec, quantification is only allowed over variables of type ki_world")
-          }
          }
           val convertedBody:THF.Formula = convertSemanticPreFormula(body,specIndex)
           THF.QuantifiedFormula(quantifier,convertedVariables, convertedBody)
