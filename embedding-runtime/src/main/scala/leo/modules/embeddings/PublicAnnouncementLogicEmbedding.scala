@@ -375,7 +375,8 @@ object PublicAnnouncementLogicEmbedding extends Embedding {
 
     private[this] def createState(spec: TPTP.AnnotatedFormula): Unit = {
       spec.formula match {
-        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(`name`, Seq()),t@THF.Tuple(spec0)))  =>
+        case THF.Logical(THF.FunctionTerm(`name`, Seq())) => // All good
+        case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(`name`, Seq()),t@THF.Tuple(spec0))) =>
           if (spec0.nonEmpty) throw new EmbeddingException(s"Logic parameters not supported by logic '$name' but ${t.pretty} was given.")
         case _ => throw new EmbeddingException(s"Malformed logic specification entry: ${spec.pretty}")
       }
