@@ -20,7 +20,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
   override type OptionType = ModalEmbeddingOption.type
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
-  override final def name: String = "modal"
+  override final def name: String = "$modal"
   override final def version: String = "2.1.1"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
