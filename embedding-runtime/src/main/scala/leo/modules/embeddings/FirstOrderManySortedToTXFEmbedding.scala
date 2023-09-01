@@ -10,6 +10,10 @@ import scala.annotation.unused
 
 object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingLike {
 
+  /** Exception is thrown if the input problem lies outside of scope for the first-order-logic-based
+   * modal logic embedding, e.g., contains a propositional quantification. */
+  final class UnsupportedFragmentException(msg: String) extends RuntimeException(msg)
+
   object FOMLToTXFEmbeddingParameter extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
     //    type FOMLToTXFEmbeddingParameter = Value
@@ -19,13 +23,21 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.2.5"
+  override final val version: String = "1.2.6"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
 
-  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
+  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem = {
+    try {
+      apply0(problem, embeddingOptions)
+    } catch {
+      case e:UnsupportedFragmentException => throw new EmbeddingException(e.getMessage)
+    }
+  }
+  protected[embeddings] final def apply0(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem = {
     new FirstOrderManySortedToTXFEmbeddingImpl(problem, embeddingOptions).apply()
+  }
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
                            embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): Seq[TPTP.AnnotatedFormula] =
@@ -250,7 +262,11 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           val convertedBody0 = convertFormula(body, worldPlaceholder, boundVars)
           val existenceGuards: Seq[TFF.Formula] = variableList.map { case (varName, maybeType) =>
             maybeType match {
-              case Some(ty) => existencePredicate(ty, worldPlaceholder, varName)
+              case Some(ty) =>
+                ty match {
+                  case TFF.AtomicType("$o", Seq()) => throw new UnsupportedFragmentException(s"Quantification over propositions not supported in first-order modal logic embedding but '${formula.pretty}' found.")
+                  case _ => existencePredicate(ty, worldPlaceholder, varName)
+                }
               case None => existencePredicate(TFF.AtomicType("$i", Seq.empty), worldPlaceholder, varName)
             }
           }
@@ -276,7 +292,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           }
           case _ => throw new EmbeddingException(s"Illegal number of arguments to connective '${connective.pretty}' in formula '${formula.pretty}'.")
         }
-        case TFF.FormulaVariable(_) => throw new EmbeddingException(s"Quantification over propositions not supported in first-order modal logic embedding but '${formula.pretty}' found. Use higher-order modal logic embedding instead (using parameter '-p FORCE_HIGHERORDER').")
+        case TFF.FormulaVariable(_) => throw new UnsupportedFragmentException(s"Quantification over propositions not supported in first-order modal logic embedding but '${formula.pretty}' found. Use higher-order modal logic embedding instead (using parameter '-p FORCE_HIGHERORDER').")
         case TFF.Assignment(_, _) | TFF.MetaIdentity(_, _) => throw new EmbeddingException(s"Unexpected formula '${formula.pretty}' in embedding.")
       }
     }

@@ -21,7 +21,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "$modal"
-  override final def version: String = "2.1.1"
+  override final def version: String = "2.1.2"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
     generateTHFSpecification(name, logicSpecParamNames, specs)
@@ -40,13 +40,20 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
           // contains extended specification entries (interaction axioms, meta-axioms, etc....)
           if (testSpecForExtendedEntries(spec)) new ModalEmbeddingImpl(problem, embeddingOptions).apply()
           else {
-            System.err.println(s"%%% First-order input detected, using modal-logic-to-TFF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}). Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
+            System.err.println(s"%%% First-order input detected, trying modal-logic-to-TFX embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}) ... Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
             /* create new parameter set */
             var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
             if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
             if (embeddingOptions.contains(ModalEmbeddingOption.EMPTYDOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.EMPTYDOMAINS
             if (embeddingOptions.contains(ModalEmbeddingOption.LOCALEXTENSION)) parameters = parameters + FOMLToTXFEmbeddingParameter.LOCALEXTENSION
-            FirstOrderManySortedToTXFEmbedding.apply(problem, parameters)
+            try {
+              FirstOrderManySortedToTXFEmbedding.apply0(problem, parameters)
+            } catch {
+              case e:FirstOrderManySortedToTXFEmbedding.UnsupportedFragmentException =>
+                System.err.println("%%% Info: Modal-logic-to-TFX embedding failed (due to unsupported language features). Falling back to higher-order embedding ...")
+              new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+            }
+
           }
         case _ => new ModalEmbeddingImpl(problem, embeddingOptions).apply()
       }
