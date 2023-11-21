@@ -23,7 +23,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.2.6"
+  override final val version: String = "1.2.7"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
@@ -100,16 +100,16 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     // For warnings that should go inside the output file
     private[this] val warnings: collection.mutable.Buffer[String] = collection.mutable.Buffer.empty
 
-    @inline private[this] val worldTypeName: String = "'$ki_world'"
+    @inline private[this] val worldTypeName: String = "'$world'"
     @inline private[this] def worldType: TFF.Type = TFF.AtomicType(worldTypeName, Seq.empty)
-    @inline private[this] val accessibilityRelationName: String = "'$ki_accessible'"
-    @inline private[this] val localWorldName: String = "'$ki_local_world'"
+    @inline private[this] val accessibilityRelationName: String = "'$accessible_world'"
+    @inline private[this] val localWorldName: String = "'$local_world'"
     @inline private[this] def localWorldVariableName: String = "W"
     @inline private[this] def localWorldConstant: TFF.Term = TFF.AtomicTerm(localWorldName, Seq.empty)
     @inline private[this] def localWorldVariable: TFF.Term = TFF.Variable(localWorldVariableName)
-    @inline private[this] val indexTypeName: String = "'$ki_index'"
+    @inline private[this] val indexTypeName: String = "'$index'"
     @unused @inline private[this] def indexType: TFF.Type = TFF.AtomicType(indexTypeName, Seq.empty)
-    @inline private[this] val existencePredicateName: String = "'$ki_exists_in_world'"
+    @inline private[this] val existencePredicateName: String = "'$exists_in_world'"
     /* This only has to work for first-order types, so just pretty instead of encodeType: */
     @inline private[this] def existencePredicateNameForType(ty: TFF.Type): String = s"'${unescapeTPTPName(existencePredicateName)}_${ty.pretty}'"
     private[this] val indexValues: collection.mutable.Set[TFF.Term] = collection.mutable.Set.empty
@@ -133,7 +133,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
 
     private[this] def escapeType(ty: TFF.Type): TFF.Type = {
       ty match {
-        case TFF.AtomicType("$ki_world", Seq()) => worldType
+        case TFF.AtomicType("$world", Seq()) => worldType
         case TFF.MappingType(left, right) =>
           val escapedLeft = left.map(escapeType)
           TFF.MappingType(escapedLeft, escapeType(right))
@@ -216,8 +216,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     // Interpretation formulas are interpreted specially (like hybrid logic, specifically on worlds).
     private[this] def convertInterpretationFormula(formula: TFF.Formula): TFF.Formula = {
       formula match {
-        case TFF.AtomicFormula("$ki_accessible", Seq(w, v)) => TFF.AtomicFormula(accessibilityRelationName, Seq(w, v))
-        case TFF.AtomicFormula("$ki_world_is", Seq(world, TFF.FormulaTerm(worldFormula))) =>
+        case TFF.AtomicFormula("$accessible_world", Seq(w, v)) => TFF.AtomicFormula(accessibilityRelationName, Seq(w, v))
+        case TFF.AtomicFormula("$in_world", Seq(world, TFF.FormulaTerm(worldFormula))) =>
           convertFormula(worldFormula, worldPlaceholder = world)
         case TFF.Equality(left, right) => TFF.Equality(convertInterpretationTerm(left),convertInterpretationTerm(right))
         case TFF.Inequality(left, right) => TFF.Inequality(convertInterpretationTerm(left),convertInterpretationTerm(right))
@@ -234,7 +234,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     }
     private[this] def convertInterpretationTerm(term: TFF.Term): TFF.Term = {
       term match {
-        case TFF.AtomicTerm("$ki_local_world", Seq()) => localWorldConstant
+        case TFF.AtomicTerm("$local_world", Seq()) => localWorldConstant
         case TFF.FormulaTerm(formula) => TFF.FormulaTerm(convertInterpretationFormula(formula))
         case _ => term
       }
@@ -340,7 +340,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     private[this] def convertTerm(term: TFF.Term, worldPlaceholder: TFF.Term, boundVars: Set[String]): TFF.Term = {
       term match {
         /* special cases */
-        case TFF.AtomicTerm("$ki_local_world", Seq()) => localWorldConstant
+        case TFF.AtomicTerm("$local_world", Seq()) => localWorldConstant
         /* special cases END */
         case TFF.FormulaTerm(formula) => TFF.FormulaTerm(convertFormula(formula, worldPlaceholder, boundVars))
         case _ => term

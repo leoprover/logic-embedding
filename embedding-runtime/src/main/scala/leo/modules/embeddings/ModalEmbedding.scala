@@ -21,7 +21,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "$modal"
-  override final def version: String = "2.1.2"
+  override final def version: String = "2.1.3"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
     generateTHFSpecification(name, logicSpecParamNames, specs)
@@ -546,9 +546,9 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
           THF.QuantifiedFormula(quantifier,convertedVariables, convertedBody)
 
         case THF.FunctionTerm(f,args) => f match{
-          case "$ki_accessible" => specIndex match {
-            // change "$ki_accessible" to "mrel"
-            // no index of the accessibility relation being defined can be given to "$ki_accessible" in semantic formulas so the index of the modal operator that the formula characterizes in the logic spec is used for "mrel"
+          case "$accessible_world" => specIndex match {
+            // change "$accessible_world" to "mrel"
+            // no index of the accessibility relation being defined can be given to "$accessible_world" in semantic formulas so the index of the modal operator that the formula characterizes in the logic spec is used for "mrel"
             case Some(value) =>
               val rel = THF.BinaryFormula(THF.App, str2Fun("mrel"), value)
               if (args.nonEmpty) THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, rel, args.head), args.last)
@@ -559,7 +559,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
               else THF.FunctionTerm(rel, args)
           }
           case otherName =>
-            throw new EmbeddingException(s"Invalid function or predicate in semantic in the logic spec: $otherName given but only ki_accessible is allowed")
+            throw new EmbeddingException(s"Invalid function or predicate in semantic in the logic spec: $otherName given but only $$accessible_world is allowed")
         }
 
         case THF.BinaryFormula(connective,left,right) =>
@@ -733,7 +733,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
           var SyntacticFormulaCount: Int = 0
           modalsMapFormulas.get(index) foreach { formulaList =>
             formulaList foreach { formula =>
-              def isSemantic: Boolean = formula.symbols.contains("$ki_accessible")
+              def isSemantic: Boolean = formula.symbols.contains("$accessible_world")
               // convert semantic logic-spec formulas
               if (isSemantic) {
                 // count formulas in order to enumerate them
@@ -775,7 +775,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
       var InteractionSchemeCount: Int = 0
       var GeneralAxiomSchemeCount: Int = 0
       modalsMetaAxioms foreach {axiom =>
-        def isSemantic: Boolean = axiom.symbols.contains("$ki_accessible")
+        def isSemantic: Boolean = axiom.symbols.contains("$accessible_world")
         // In the multimodal case, semantic formulas can not be given outside the definitions for specific modal operators right now since the syntax does not allow for it.
         // In the monomodal case, semantic formulas can be given here and represent the general characteristics of the (only) accessibility relation.
         if (isSemantic & isMultiModal) throw new EmbeddingException(s"Semantic notation for meta axioms and bridge axioms is not supported in the multimodal case, so ${axiom.pretty} can not be embedded")
