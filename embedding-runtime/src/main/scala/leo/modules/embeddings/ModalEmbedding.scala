@@ -45,7 +45,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
             var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
             if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
             if (embeddingOptions.contains(ModalEmbeddingOption.EMPTYDOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.EMPTYDOMAINS
-            if (embeddingOptions.contains(ModalEmbeddingOption.LOCALEXTENSION)) parameters = parameters + FOMLToTXFEmbeddingParameter.LOCALEXTENSION
+//            if (embeddingOptions.contains(ModalEmbeddingOption.LOCALEXTENSION)) parameters = parameters + FOMLToTXFEmbeddingParameter.LOCALEXTENSION
             try {
               FirstOrderManySortedToTXFEmbedding.apply0(problem, parameters)
             } catch {
@@ -1377,8 +1377,8 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
-                case `logicSpecParamNameTermDesignation` =>
-                  warnings.append(s"Parameter '$logicSpecParamNameTermDesignation' currently unsupported; this will probably coincide with global terms.")
+                case `logicSpecParamNameTermLocality` =>
+                  warnings.append(s"Parameter '$logicSpecParamNameTermLocality' currently unsupported; this will probably coincide with global terms.")
                 case `logicSpecParamNameRigidity` =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   if (default.isDefined) { rigidityDefaultExists = true }

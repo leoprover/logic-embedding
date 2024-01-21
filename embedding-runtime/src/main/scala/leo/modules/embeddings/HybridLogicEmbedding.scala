@@ -1114,8 +1114,8 @@ object HybridLogicEmbedding extends Embedding with ModalEmbeddingLike {
           spec0 foreach {
             case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
-                case `logicSpecParamNameTermDesignation` =>
-                  throw new EmbeddingException(s"Parameter '$logicSpecParamNameTermDesignation' currently unsupported; omitting it will probably coincide with global terms.")
+                case `logicSpecParamNameTermLocality` =>
+                  throw new EmbeddingException(s"Parameter '$logicSpecParamNameTermLocality' currently unsupported; omitting it will probably coincide with global terms.")
                 case `logicSpecParamNameRigidity` =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   default match {

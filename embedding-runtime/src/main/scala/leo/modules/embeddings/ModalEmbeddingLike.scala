@@ -8,10 +8,10 @@ trait ModalEmbeddingLike {
   protected final val synonymsForBox: Seq[String] = Seq("$box","$necessary","$obligatory","$knows","$believes")
   protected final val synonymsForDiamond: Seq[String] = Seq("$dia","$possible","$permissible","$canKnow","$canBelieve")
 
-  protected final val logicSpecParamNameTermDesignation = "$terms"
-  protected sealed abstract class TermDesignation
-  protected final case object Local extends TermDesignation
-  protected final case object Global extends TermDesignation
+  protected final val logicSpecParamNameTermLocality = "$terms"
+  protected sealed abstract class TermLocality
+  protected final case object Local extends TermLocality
+  protected final case object Global extends TermLocality
 
   protected final val logicSpecParamNameRigidity = "$designation"
   protected sealed abstract class Rigidity
@@ -54,6 +54,6 @@ trait ModalEmbeddingLike {
     "$modal_system_GL" -> Seq("$modal_axiom_K", "$modal_axiom_GL")
   )
 
-  protected final val logicSpecParamNames = Seq(logicSpecParamNameTermDesignation, logicSpecParamNameRigidity,
+  protected final val logicSpecParamNames = Seq(logicSpecParamNameTermLocality, logicSpecParamNameRigidity,
     logicSpecParamNameQuantification, logicSpecParamNameModalities)
 }
