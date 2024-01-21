@@ -8,6 +8,23 @@ import leo.modules.input.TPTPParser.annotatedTFF
 
 import scala.annotation.unused
 
+/**
+ * An implementation of a first-order modal logic embedding into (classical) typed first-order logic
+ * (TF0 TPTP format). The embedding is roughly based on Section 2.10 of ...
+ *
+ *   Torben Braüner and Silvio Ghilardi, First-Order Modal Logic, Chapter 9 of Handbook of Modal Logic,
+ *   P. Blackburn et al. (Editors), Elsevier B.V, 2007.
+ *
+ * ... with many modification for different modal logic semantics such as
+ *
+ *   - constant/cumulative/decreasing/varying domains (for different quantification semantics),
+ *   - rigid/non-rigid designation of terms,
+ *   - local/global extension of terms, and
+ *   - different axiomatizations for modalities (multi-modal logics).
+ *
+ * Additionally, the output can be generated in polymorphic first-order logic (TF1 TPTP format)
+ * when passing the [[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.POLYMORPHIC]] parameter.
+ */
 object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingLike {
 
   /** Exception is thrown if the input problem lies outside of scope for the first-order-logic-based
@@ -17,27 +34,26 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   object FOMLToTXFEmbeddingParameter extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
     //    type FOMLToTXFEmbeddingParameter = Value
-    final val POLYMORPHIC, LOCALEXTENSION, EMPTYDOMAINS = Value
+    final val POLYMORPHIC, EMPTYDOMAINS = Value
   }
   override type OptionType = FOMLToTXFEmbeddingParameter.type
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.2.7"
+  override final val version: String = "1.3.0"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
 
-  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem = {
+  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
     try {
       apply0(problem, embeddingOptions)
     } catch {
       case e:UnsupportedFragmentException => throw new EmbeddingException(e.getMessage)
     }
-  }
-  protected[embeddings] final def apply0(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem = {
+
+  protected[embeddings] final def apply0(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
     new FirstOrderManySortedToTXFEmbeddingImpl(problem, embeddingOptions).apply()
-  }
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
                            embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): Seq[TPTP.AnnotatedFormula] =
@@ -54,7 +70,6 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     // Semantics dimensions
     // (1) Rigid or flexible symbols
     private[this] var rigidityMap: Map[String, Rigidity] = Map.empty
-    private[this] var reverseSymbolTypeMap: Map[TFF.Type, Set[String]] = Map.empty.withDefaultValue(Set.empty)
     private[this] var rigidityDefaultExists: Boolean = false
     /* Initialize map */
     tptpDefinedPredicateSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
@@ -68,10 +83,12 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     // (3) Modal operator properties, for now as string
     private[this] var modalsMap: Map[TFF.Term, Seq[String]] = Map.empty
     private[this] var modalDefaultExists: Boolean = false
+
+    // (4) Local/global terms
+    private[this] var termLocality: TermLocality = Global
     ////////////////////////////////////////////////////////////////////
     // Embedding options
     private[this] val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
-    private[this] val localExtension: Boolean = embeddingOptions.contains(LOCALEXTENSION) // default non-local extensions
     private[this] val allowEmptyDomains: Boolean = embeddingOptions.contains(EMPTYDOMAINS) // default non-empty domains
     ////////////////////////////////////////////////////////////////////
 
@@ -116,14 +133,23 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     @inline private[this] def multimodal(idx: TFF.Term): Unit = {
       indexValues.addOne(idx)
     }
+
+//    private[this] var reverseSymbolTypeMap: Map[TFF.Type, Set[String]] = Map.empty.withDefaultValue(Set.empty)
+    private[this] var symbolsWithGoalType: Map[TFF.Type, Set[(String, TFF.Type)]] = Map.empty.withDefaultValue(Set.empty)
     private[this] val quantifierTypes: collection.mutable.Set[TFF.Type] = collection.mutable.Set.empty
-    private[this] def existencePredicate(typ: TFF.Type, worldPlaceholder: TFF.Term, variableName: String): TFF.Formula = {
+    private[this] def existencePredicate(typ: TFF.Type, worldPlaceholder: TFF.Term, term: TFF.Term): TFF.Formula = {
       typ match {
         case TFF.AtomicType(typName, _) =>
           quantifierTypes.addOne(typ)
-          if (polymorphic) TFF.AtomicFormula(existencePredicateName, Seq(TFF.AtomicTerm(typName, Seq.empty), worldPlaceholder, TFF.Variable(variableName)))
-          else TFF.AtomicFormula(existencePredicateNameForType(typ), Seq(worldPlaceholder, TFF.Variable(variableName)))
+          if (polymorphic) TFF.AtomicFormula(existencePredicateName, Seq(TFF.AtomicTerm(typName, Seq.empty), worldPlaceholder, term))
+          else TFF.AtomicFormula(existencePredicateNameForType(typ), Seq(worldPlaceholder, term))
         case _ => throw new EmbeddingException(s"Illegal quantification over non-atomic type '${typ.pretty}'.")
+      }
+    }
+    private[this] def maybeExistencePredicateIfNeeded(typ: TFF.Type, worldPlaceholder: TFF.Term, term: TFF.Term): Option[TFF.Formula] = {
+      domainMap(typ) match { // If non-constant domain, then an eiw-predicate is necessary
+        case ConstantDomain => None
+        case _ => Some(existencePredicate(typ, worldPlaceholder, term))
       }
     }
 
@@ -152,21 +178,28 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             case o@TFF.AtomicType("$o", _) => TFF.MappingType(worldType +: argTypes, o)
             case _ => escapedTyp
           }
-          reverseSymbolTypeMap = reverseSymbolTypeMap + (convertedType -> (reverseSymbolTypeMap(convertedType) + atom))
+          symbolsWithGoalType = symbolsWithGoalType + (argumentTypesAndGoalTypeOfTFFType(typ)._2 -> (symbolsWithGoalType(typ) + ((atom, typ))))
+//          reverseSymbolTypeMap = reverseSymbolTypeMap + (convertedType -> (reverseSymbolTypeMap(convertedType) + atom))
           TFFAnnotated(input.name, input.role, TFF.Typing(atom, convertedType), input.annotations)
         case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
       }
     }
 
     private[this] def convertConjectureFormulasIntoOne(input: Seq[TFFAnnotated]): TFFAnnotated = {
-      val convertedConjectures = input.map { f =>
+      @inline def convertConjecture(f: TFFAnnotated): TPTP.TFF.Formula = {
         f.formula match {
           case TFF.Logical(formula) => convertAnnotatedFormula0(formula, f.role)
           case _ => throw new EmbeddingException(s"Malformed annotated formula '${f.pretty}'.")
         }
       }
-      val formulaAsOne = convertedConjectures.reduce(TFF.BinaryFormula(TFF.&, _, _))
-      TFFAnnotated("verify", "conjecture", TFF.Logical(formulaAsOne), None)
+      if (input.size == 1) {
+        val hd = input.head
+        TFFAnnotated(hd.name, hd.role, TFF.Logical(convertConjecture(hd)), hd.annotations)
+      } else {
+        val convertedConjectures = input.map(convertConjecture)
+        val formulaAsOne = convertedConjectures.reduce(TFF.BinaryFormula(TFF.&, _, _))
+        TFFAnnotated("verify", "conjecture", TFF.Logical(formulaAsOne), None)
+      }
     }
 
     private[this] def convertAnnotatedFormula0(formula: TFF.Formula, role: String): TFF.Formula = {
@@ -260,21 +293,25 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
                                                                      convertTerm(body, worldPlaceholder, boundVars))
         case TFF.QuantifiedFormula(quantifier, variableList, body) =>
           val convertedBody0 = convertFormula(body, worldPlaceholder, boundVars)
-          val existenceGuards: Seq[TFF.Formula] = variableList.map { case (varName, maybeType) =>
+          // existence-in-world guard only necessary in non-constant domains
+          val existenceGuards0: Seq[Option[TFF.Formula]] = variableList.map { case (varName, maybeType) =>
             maybeType match {
               case Some(ty) =>
                 ty match {
                   case TFF.AtomicType("$o", Seq()) => throw new UnsupportedFragmentException(s"Quantification over propositions not supported in first-order modal logic embedding but '${formula.pretty}' found.")
-                  case _ => existencePredicate(ty, worldPlaceholder, varName)
+                  case _ => maybeExistencePredicateIfNeeded(ty, worldPlaceholder, TFF.Variable(varName))
                 }
-              case None => existencePredicate(TFF.AtomicType("$i", Seq.empty), worldPlaceholder, varName)
+              case None => maybeExistencePredicateIfNeeded(TFF.AtomicType("$i", Seq.empty), worldPlaceholder, TFF.Variable(varName))
             }
           }
-          val conjunctionOfGuards: TFF.Formula = existenceGuards.reduce(TFF.BinaryFormula(TFF.&, _, _))
-          val convertedBody: TFF.Formula = quantifier match {
-            case TFF.! => TFF.BinaryFormula(TFF.Impl, conjunctionOfGuards, convertedBody0)
-            case TFF.? => TFF.BinaryFormula(TFF.&, conjunctionOfGuards, convertedBody0)
-          }
+          val existenceGuards: Seq[TFF.Formula] = existenceGuards0.flatten
+          val convertedBody: TFF.Formula = if (existenceGuards.nonEmpty) {
+            val conjunctionOfGuards: TFF.Formula = existenceGuards.reduce(TFF.BinaryFormula(TFF.&, _, _))
+            quantifier match {
+              case TFF.! => TFF.BinaryFormula(TFF.Impl, conjunctionOfGuards, convertedBody0)
+              case TFF.? => TFF.BinaryFormula(TFF.&, conjunctionOfGuards, convertedBody0)
+            }
+          } else convertedBody0
           TFF.QuantifiedFormula(quantifier, variableList, convertedBody)
         case TFF.NonclassicalPolyaryFormula(connective, args) => args match {
           case Seq(body) => connective match {
@@ -420,7 +457,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         } else {
           quantifierTypes.foreach { ty =>
             domainMap(ty) match { // FIXME: What's up the multi-modal eiw?
-              case ConstantDomain => result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
+              case ConstantDomain => /* should not happen */ warnings.append(s"Constant domain type '${ty.pretty}' contained in quantifierTypes. This is weird, please report.")//result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
               case CumulativeDomain => result.append(cumulativeExistsInWorldTPTPDef(poly = polymorphic, ty))
               case DecreasingDomain => result.append(decreasingExistsInWorldTPTPDef(poly = polymorphic, ty))
               case VaryingDomain => /* nothing */
@@ -432,12 +469,25 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             result.append(existsInWorldNonEmptyTPTPDef(poly = polymorphic, ty))
           }
         }
-        // Specify exist-in-world for constants if local extension
-        if (localExtension && quantifierTypes.nonEmpty) {
+        // Specify exist-in-world for constants if local terms
+        if (termLocality == Local && quantifierTypes.nonEmpty) {
+          // eiw-predicates only occur in quantier expressions, correct? So we can
+          // restrict ourselves to types that are quantified over.
+          // I hope this is correct :-)
+          // Further: Restrict to types whose goal type is quantified over, since
+          // this is the interesting monotony-like property of locality:
+          // if `f` is a function symbol, then it holds that ...
+          //   if x1, ..., xn exist in world w, then also f(x1, ...,  xn) exists in world w.
+          // Hence the result of f(x1,...,xn) must exist, so we need an eiw-predicate for that type
+          // if the type was quantified over.
           quantifierTypes.foreach { ty =>
-            val symbolsOfThatType = reverseSymbolTypeMap(ty)
-            symbolsOfThatType.foreach { sym =>
-              result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, ty, sym))
+//            val symbolsOfThatType = reverseSymbolTypeMap(ty)
+            val symbolsWithThatGoalType: Set[(String, TFF.Type)] = symbolsWithGoalType(ty)
+//            symbolsOfThatType.foreach { sym =>
+//              result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, ty, sym))
+//            }
+            symbolsWithThatGoalType.foreach { case (symbolName, typeOfSymbol) =>
+              result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, typeOfSymbol, symbolName))
             }
           }
         }
@@ -520,11 +570,24 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     }
 
     private[this] def symbolExistsInAllWorldsTPTPDef(poly: Boolean, ty: TPTP.TFF.Type, symbol: String): TPTP.AnnotatedFormula = {
-      import modules.input.TPTPParser.annotatedTFF
-      val ty0 = ty.pretty
-      val name = s"${unescapeTPTPName(symbol)}_exists"
-      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ( $existencePredicateName($ty0,W,$symbol) )).")
-      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ( ${existencePredicateNameForType(ty)}(W,$symbol) )).")
+//      import modules.input.TPTPParser.annotatedTFF
+//      val ty0 = ty.pretty
+      val name = s"${unescapeTPTPName(existencePredicateName)}_${unescapeTPTPName(symbol)}_mono"
+      val (argTypes, goalType) = argumentTypesAndGoalTypeOfTFFType(ty)
+      // Build the formula !w.!x1...!xn: eiw(x1,w) => (eiw(x2,w) => ... => eiw(f(x1,...,xn),w))
+      // but without all eiw predicates where the type of xi was never used in a quantification
+      // NB: Only types that are non-constant-domain occur in `quantifierTypes`, and only these
+      // types should used as argument for `ty`.
+      val variables = argTypes.zipWithIndex.map { case (argTy, idx) =>
+        (s"X$idx", Some(argTy))
+      }
+      val existencePredicates = variables.flatMap { case (variableName, variableTy) => maybeExistencePredicateIfNeeded(variableTy.get, TFF.Variable("W"), TFF.Variable(variableName))}
+      val existenceOfResult: TFF.Formula = existencePredicate(goalType, TFF.Variable("W"), TFF.AtomicTerm(symbol, variables.map(x => TFF.Variable(x._1))))
+      val body0 = existencePredicates.foldRight(existenceOfResult){case (nextPredicate,acc) => TFF.BinaryFormula(TFF.Impl, nextPredicate, acc)}
+      val body = TFF.QuantifiedFormula(TFF.!, ("W", Some(worldType)) +: variables, body0)
+      TFFAnnotated(name, "axiom", TFF.Logical(body), None)
+//      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ( $existencePredicateName($ty0,W,$symbol) )).")
+//      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ( ${existencePredicateNameForType(ty)}(W,$symbol) )).")
     }
 
     private[this] def axiomTable(index: Option[TFF.Term])(axiom: String): Option[TFFAnnotated] = {
@@ -576,10 +639,21 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         case TFF.Logical(TFF.MetaIdentity(TFF.AtomicTerm(logicname, Seq()), TFF.Tuple(spec0))) if (name +: allowedModalLogicNames) contains logicname =>
           headless = false
           spec0 foreach {
-            case TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(propertyName, Seq()), rhs)) =>
+            case line@TFF.FormulaTerm(TFF.MetaIdentity(TFF.AtomicTerm(propertyName, Seq()), rhs)) =>
               propertyName match {
-                case `logicSpecParamNameTermDesignation` =>
-                  warnings.append(s"Parameter '$logicSpecParamNameTermDesignation' currently unsupported; this will probably coincide with global terms.")
+                case `logicSpecParamNameTermLocality` =>
+                  val (default, map) = parseTFFSpecRHS(rhs)
+                  if (map.nonEmpty) throw new EmbeddingException(s"Malformed entry for term locality: '${line.pretty}'")
+                  else {
+                    default match {
+                      case Some(value) => value match {
+                        case "$global" => termLocality = Global
+                        case "$local" => termLocality = Local
+                        case _ => throw new EmbeddingException(s"Unrecognized term locality option: '$value'.")
+                      }
+                      case None => warnings.append(s"Parameter '$logicSpecParamNameTermLocality' was omitted in the logic specification; the embedding will assume global terms.")
+                    }
+                  }
                 case `logicSpecParamNameRigidity` =>
                   val (default, map) = parseTFFSpecRHS(rhs)
                   if (default.isDefined) {
@@ -589,13 +663,13 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
                     case Some("$rigid") => rigidityMap = rigidityMap.withDefaultValue(Rigid)
                     case Some("$flexible") => rigidityMap = rigidityMap.withDefaultValue(Flexible)
                     case None => // Do nothing, no default
-                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
+                    case _ => throw new EmbeddingException(s"Unrecognized rigidity option: '$default'")
                   }
                   map foreach { case (name, rigidity) =>
                     rigidity match {
                       case "$rigid" => rigidityMap += (name -> Rigid)
                       case "$flexible" => rigidityMap += (name -> Flexible)
-                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$rigidity'")
+                      case _ => throw new EmbeddingException(s"Unrecognized rigidity option: '$rigidity'")
                     }
                   }
                 case `logicSpecParamNameQuantification` =>
@@ -606,7 +680,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
                     case Some("$cumulative") => domainMap = domainMap.withDefaultValue(CumulativeDomain)
                     case Some("$decreasing") => domainMap = domainMap.withDefaultValue(DecreasingDomain)
                     case None => // Do nothing, no default
-                    case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$default'")
+                    case _ => throw new EmbeddingException(s"Unrecognized domains option: '$default'")
                   }
                   map foreach { case (name, quantification) =>
                     quantification match {
@@ -614,7 +688,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
                       case "$varying" => domainMap += (stringToTFFType(name) -> VaryingDomain)
                       case "$cumulative" => domainMap += (stringToTFFType(name) -> CumulativeDomain)
                       case "$decreasing" => domainMap += (stringToTFFType(name) -> DecreasingDomain)
-                      case _ => throw new EmbeddingException(s"Unrecognized semantics option: '$quantification'")
+                      case _ => throw new EmbeddingException(s"Unrecognized domains option: '$quantification'")
                     }
                   }
                 case `logicSpecParamNameModalities` => val (default, map) = parseTFFListSpecRHS(rhs)
