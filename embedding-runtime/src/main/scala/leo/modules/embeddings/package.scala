@@ -97,13 +97,6 @@ package object embeddings {
   // Other utility
 
   @inline final def str2Fun(functionName: String): TPTP.THF.Formula = TPTP.THF.FunctionTerm(functionName, Seq.empty)
-  @tailrec
-  final def goalType(typ: THF.Type): THF.Type = {
-    typ match {
-      case THF.BinaryFormula(THF.FunTyConstructor, _, right) => goalType(right)
-      case _ => typ
-    }
-  }
 
   type LogicSpec = AnnotatedFormula
   type SortDecl = AnnotatedFormula
@@ -237,6 +230,22 @@ package object embeddings {
   ///// THF specific definitions
   /////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////
+
+  final def argumentTypesAndGoalTypeOfTHFType(ty: THF.Type): (Seq[THF.Type], THF.Type) =
+    argumentTypesAndGoalTypeOfTHFType0(ty, Seq.empty)
+  @tailrec
+  private final def argumentTypesAndGoalTypeOfTHFType0(ty: THF.Type, acc: Seq[THF.Type]): (Seq[THF.Type], THF.Type) = ty match {
+    case THF.BinaryFormula(THF.FunTyConstructor, left, right) => argumentTypesAndGoalTypeOfTHFType0(right, acc :+ left)
+    case _ => (acc, ty)
+  }
+
+  @tailrec
+  final def goalType(typ: THF.Type): THF.Type = {
+    typ match {
+      case THF.BinaryFormula(THF.FunTyConstructor, _, right) => goalType(right)
+      case _ => typ
+    }
+  }
 
   type THFLogicSpec = THFAnnotated
   type THFSortDecl = THFAnnotated

@@ -14,14 +14,14 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
     @unused
     final val MONOMORPHIC, POLYMORPHIC,
     MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, FORCE_HIGHERORDER, LOCALEXTENSION, EMPTYDOMAINS = Value
+    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, FORCE_HIGHERORDER, EMPTYDOMAINS, SILENT = Value
   }
 
   override type OptionType = ModalEmbeddingOption.type
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "$modal"
-  override final def version: String = "2.1.3"
+  override final def version: String = "2.2.0"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
     generateTHFSpecification(name, logicSpecParamNames, specs)
@@ -40,17 +40,16 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
           // contains extended specification entries (interaction axioms, meta-axioms, etc....)
           if (testSpecForExtendedEntries(spec)) new ModalEmbeddingImpl(problem, embeddingOptions).apply()
           else {
-            System.err.println(s"%%% First-order input detected, trying modal-logic-to-TFX embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}) ... Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
+            if (!embeddingOptions.contains(ModalEmbeddingOption.SILENT)) System.out.println(s"%%% First-order input detected, trying modal-logic-to-TFX embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}) ... Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
             /* create new parameter set */
             var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
             if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
             if (embeddingOptions.contains(ModalEmbeddingOption.EMPTYDOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.EMPTYDOMAINS
-//            if (embeddingOptions.contains(ModalEmbeddingOption.LOCALEXTENSION)) parameters = parameters + FOMLToTXFEmbeddingParameter.LOCALEXTENSION
             try {
               FirstOrderManySortedToTXFEmbedding.apply0(problem, parameters)
             } catch {
-              case e:FirstOrderManySortedToTXFEmbedding.UnsupportedFragmentException =>
-                System.err.println("%%% Info: Modal-logic-to-TFX embedding failed (due to unsupported language features). Falling back to higher-order embedding ...")
+              case _:FirstOrderManySortedToTXFEmbedding.UnsupportedFragmentException =>
+                if (!embeddingOptions.contains(ModalEmbeddingOption.SILENT)) System.out.println("%%% Info: Modal-logic-to-TFX embedding failed (due to unsupported language features). Falling back to higher-order embedding ...")
               new ModalEmbeddingImpl(problem, embeddingOptions).apply()
             }
 
@@ -78,7 +77,6 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
     // Semantics dimensions
     // (1) Rigid or flexible symbols
     private[this] var rigidityMap: Map[String, Rigidity] = Map.empty
-    private[this] var reverseSymbolTypeMap: Map[THF.Type, Set[String]] = Map.empty.withDefaultValue(Set.empty)
     private[this] var rigidityDefaultExists: Boolean = false
     /* Initialize map */
     tptpDefinedPredicateSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
@@ -97,10 +95,12 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
     private[this] var modalsMapFormulas: Map[THF.Formula,Seq[THF.Formula]] = Map.empty
     private[this] var modalsMetaAxioms: Seq[THF.Formula] = Seq.empty
     private[this] var modalDefaultExists: Boolean = false
+
+    // (4) Local/global terms
+    private[this] var termLocality: TermLocality = Global
     ////////////////////////////////////////////////////////////////////
     // Embedding options
     private[this] val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
-    private[this] val localExtension: Boolean = embeddingOptions.contains(LOCALEXTENSION) // default non-local extensions
     private[this] val allowEmptyDomains: Boolean = embeddingOptions.contains(EMPTYDOMAINS) // default non-empty domains
 
     private final val MODALITY_EMBEDDING_SYNTACTICAL = true
@@ -181,6 +181,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
 
     @inline private[this] def mglobal: THF.Formula = str2Fun("mglobal")
     @inline private[this] def mlocal: THF.Formula = str2Fun("mlocal")
+    private[this] var symbolsWithGoalType: Map[THF.Type, Set[(String, THF.Type)]] = Map.empty.withDefaultValue(Set.empty)
 
     @inline private def convertFormula(formula: THF.Formula): THF.Formula = convertFormula(formula, Map.empty)
     private def convertFormula(formula: THF.Formula, boundVars: Map[String, THF.Type]): THF.Formula = {
@@ -627,7 +628,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
           val rigidity = getRigidityOfSymbol(symbol, typ)
           rigidityMap = rigidityMap + (symbol -> rigidity) // add to table in case it was implicit (e.g. a predicate)
           val convertedType = convertConstantSymbolType(symbol, typ)
-          reverseSymbolTypeMap = reverseSymbolTypeMap + (convertedType -> (reverseSymbolTypeMap(convertedType) + symbol))
+          symbolsWithGoalType = symbolsWithGoalType + (goalType(typ) -> (symbolsWithGoalType(typ) + ((symbol, typ))))
           val convertedTyping = TPTP.THF.Typing(symbol, convertedType)
           TPTP.THFAnnotated(formula.name, formula.role, convertedTyping, formula.annotations)
         case _ => throw new EmbeddingException(s"Malformed type definition in formula '${formula.name}', aborting.")
@@ -856,12 +857,6 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
                 // or, if S5 and cumul/decreasing, then as universal predicate
                 if (isS5 && (domainMap(ty.pretty) == CumulativeDomain || domainMap(ty.pretty) == DecreasingDomain)) {
                   result.appendAll(polyIndexedUniversalExistsInWorldTPTPDef(ty))
-                } else {
-                  if (localExtension) {
-                    reverseSymbolTypeMap(ty).foreach { constant =>
-                      result.appendAll(polyIndexedConstantExistsInWorldTPTPDef(ty, constant))
-                    }
-                  }
                 }
               }
             }
@@ -892,12 +887,6 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
                 // Special case: If cumul or decreasing, and in S5, then it's equivalent to constant domain.
                 // Simulate this by postulating eiw as constant true (simpler to do, implementation wise, than removing eiw completely)
                 result.appendAll(indexedUniversalExistsInWorldTPTPDef(ty))
-              } else {
-                if (localExtension) {
-                  reverseSymbolTypeMap(ty).foreach { constant => // postulate existence for each constant symbol of that type (if any)
-                    result.appendAll(indexedConstantExistsInWorldTPTPDef(ty, constant))
-                  }
-                }
               }
             }
             // In case of non-S5, add cumul/decreasing axioms
@@ -913,6 +902,14 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
               } else if (domainMap(ty.pretty) == DecreasingDomain && !isS5) {
                 result.appendAll(indexedBarcanFormulaTPTPDef(ty))
               }
+            }
+          }
+        }
+        if (termLocality == Local) {
+          quantifierTypes foreach { ty =>
+            val symbolsWithThatGoalType: Set[(String, THF.Type)] = symbolsWithGoalType(ty)
+            symbolsWithThatGoalType.foreach { case (symbolName, typeOfSymbol) =>
+              result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, typeOfSymbol, symbolName))
             }
           }
         }
@@ -1011,11 +1008,33 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
         annotatedTHF(s"thf(eiw_${serializeType(typ)}_universal, axiom, ![W:$worldTypeName]: ![X:${typ.pretty}]: (eiw_${serializeType(typ)} @ X @ W) ).")
       )
     }
-    private[this] def indexedConstantExistsInWorldTPTPDef(typ: THF.Type, name: String): Seq[TPTP.AnnotatedFormula] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Seq(
-        annotatedTHF(s"thf('eiw_${serializeType(typ)}_${unescapeTPTPName(name)}_exists', axiom, ![W:$worldTypeName]: (eiw_${serializeType(typ)} @ ${escapeAtomicWord(name)} @ W) ).")
-      )
+
+    private[this] def symbolExistsInAllWorldsTPTPDef(poly: Boolean, ty: TPTP.THF.Type, symbol: String): TPTP.AnnotatedFormula = {
+      val name = s"eiw_${unescapeTPTPName(symbol)}_mono"
+      def eiwPredicateForTy(ty: THF.Type): THF.Formula = {
+        if (poly) THF.BinaryFormula(THF.App, THF.FunctionTerm("eiw", Seq.empty), ty)
+        else THF.FunctionTerm(s"eiw_${serializeType(ty)}", Seq.empty)
+      }
+
+      val (argTypes, goalType) = argumentTypesAndGoalTypeOfTHFType(ty)
+      // Build the formula !w.!x1...!xn: eiw(x1,w) => (eiw(x2,w) => ... => eiw(f(x1,...,xn),w))
+      // but without all eiw predicates where the type of xi was never used in a quantification
+      // NB: Only types that are non-constant-domain occur in `quantifierTypes`, and only these
+      // types should used as argument for `ty`.
+      val variables = argTypes.zipWithIndex.map { case (argTy, idx) => (s"X$idx", argTy) }
+      val worldVariable = THF.Variable("W")
+      val existencePredicates: Seq[THF.Formula] = variables.flatMap { case (variableName, variableTy) =>
+        if (quantifierTypes.contains(variableTy) && domainMap(variableTy.pretty) != ConstantDomain)
+          Some(THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, eiwPredicateForTy(variableTy), THF.Variable(variableName)), worldVariable))
+        else None
+      }
+      val appliedSymbol: THF.Formula = variables.foldLeft(THF.FunctionTerm(symbol, Seq.empty):THF.Formula) { case (acc,nextVariable) =>
+        THF.BinaryFormula(THF.App, acc, THF.Variable(nextVariable._1))
+      }
+      val existenceOfResult: THF.Formula = THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, eiwPredicateForTy(goalType), appliedSymbol), worldVariable)
+      val body0 = existencePredicates.foldRight(existenceOfResult){case (nextPredicate,acc) => THF.BinaryFormula(THF.Impl, nextPredicate, acc)}
+      val body = THF.QuantifiedFormula(THF.!, ("W", THF.FunctionTerm(worldTypeName, Seq.empty)) +: variables, body0)
+      THFAnnotated(name, "axiom", THF.Logical(body), None)
     }
 
     private[this] def indexedCumulativeExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
@@ -1071,12 +1090,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
         annotatedTHF(s"thf('eiw_${unescapeTPTPName(name)}_universal', axiom, ! [W:$worldTypeName]: ![X:${typ.pretty}]: (eiw @ ${typ.pretty} @ X @ W) ).")
       )
     }
-    private[this] def polyIndexedConstantExistsInWorldTPTPDef(typ: THF.Type, name: String): Seq[TPTP.AnnotatedFormula] = {
-      import modules.input.TPTPParser.annotatedTHF
-      Seq(
-        annotatedTHF(s"thf('eiw_${unescapeTPTPName(name)}_exists', axiom, ![W:$worldTypeName]: (eiw @ ${typ.pretty} @ ${escapeAtomicWord(name)} @ W) ).")
-      )
-    }
+
     private[this] def polyIndexedCumulativeExistsInWorldTPTPDef(typ: THF.Type): Seq[TPTP.AnnotatedFormula] = {
       import modules.input.TPTPParser.annotatedTHF
       if (isMultiModal) {
@@ -1375,10 +1389,21 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
       spec.formula match {
         case THF.Logical(THF.BinaryFormula(THF.==, THF.FunctionTerm(name, Seq()),THF.Tuple(spec0))) if allowedModalLogicNames contains name =>
           spec0 foreach {
-            case THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
+            case line@THF.BinaryFormula(THF.==, THF.FunctionTerm(propertyName, Seq()), rhs) =>
               propertyName match {
                 case `logicSpecParamNameTermLocality` =>
-                  warnings.append(s"Parameter '$logicSpecParamNameTermLocality' currently unsupported; this will probably coincide with global terms.")
+                  val (default, map) = parseTHFSpecRHS(rhs)
+                  if (map.nonEmpty) throw new EmbeddingException(s"Malformed entry for term locality: '${line.pretty}'")
+                  else {
+                    default match {
+                      case Some(value) => value match {
+                        case "$global" => termLocality = Global
+                        case "$local" => termLocality = Local
+                        case _ => throw new EmbeddingException(s"Unrecognized term locality option: '$value'.")
+                      }
+                      case None => warnings.append(s"Parameter '$logicSpecParamNameTermLocality' was omitted in the logic specification; the embedding will assume global terms.")
+                    }
+                  }
                 case `logicSpecParamNameRigidity` =>
                   val (default, map) = parseTHFSpecRHS(rhs)
                   if (default.isDefined) { rigidityDefaultExists = true }
