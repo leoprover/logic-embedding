@@ -42,5 +42,8 @@ lazy val app = (project in file("embedding-app"))
     assembly/mainClass := Some("leo.modules.EmbeddingApp"),
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
-    unmanagedBase := baseDirectory.value / ".." / "lib"
+    unmanagedBase := baseDirectory.value / ".." / "lib",
+    nativeImageOptions += s"-H:ReflectionConfigurationFiles=${target.value / "native-image-configs" / "reflect-config.json"}",
+    nativeImageOptions += s"-H:ConfigurationFileDirectories=${target.value / "native-image-configs" }",
+    nativeImageOptions +="-H:+JNI"
 	).dependsOn(runtime)
