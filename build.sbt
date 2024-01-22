@@ -1,6 +1,6 @@
 lazy val commonSettings = Seq(
   organization := "org.leo",
-  version := "1.7.18",
+  version := "1.7.20",
   scalaVersion := "2.13.12",
   scalacOptions ++= Seq(
       "-deprecation",
@@ -10,7 +10,7 @@ lazy val commonSettings = Seq(
   //resolvers += "Sonatype S01 OSS Snapshots" at "https://s01.oss.sonatype.org/content/repositories/snapshots",
 
   libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.7.1",
-  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % "test"
 )
 
 lazy val embedding = (project in file("."))
@@ -34,6 +34,7 @@ lazy val runtime = (project in file("embedding-runtime"))
 	)
 
 lazy val app = (project in file("embedding-app"))
+  .enablePlugins(NativeImagePlugin)
 	.settings(
 	  commonSettings,
     name := "logic-embedding-app",
