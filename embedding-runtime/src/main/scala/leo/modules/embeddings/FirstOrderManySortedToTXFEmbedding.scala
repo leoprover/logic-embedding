@@ -581,7 +581,10 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       val variables = argTypes.zipWithIndex.map { case (argTy, idx) =>
         (s"X$idx", Some(argTy))
       }
-      val existencePredicates = variables.flatMap { case (variableName, variableTy) => maybeExistencePredicateIfNeeded(variableTy.get, TFF.Variable("W"), TFF.Variable(variableName))}
+      val existencePredicates = variables.flatMap { case (variableName, variableTy) =>
+        if (quantifierTypes.contains(variableTy.get)) maybeExistencePredicateIfNeeded(variableTy.get, TFF.Variable("W"), TFF.Variable(variableName))
+        else None
+      }
       val existenceOfResult: TFF.Formula = existencePredicate(goalType, TFF.Variable("W"), TFF.AtomicTerm(symbol, variables.map(x => TFF.Variable(x._1))))
       val body0 = existencePredicates.foldRight(existenceOfResult){case (nextPredicate,acc) => TFF.BinaryFormula(TFF.Impl, nextPredicate, acc)}
       val body = TFF.QuantifiedFormula(TFF.!, ("W", Some(worldType)) +: variables, body0)
