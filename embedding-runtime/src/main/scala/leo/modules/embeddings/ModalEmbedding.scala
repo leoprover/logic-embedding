@@ -21,7 +21,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "$modal"
-  override final def version: String = "2.2.0"
+  override final def version: String = "2.2.1"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
     generateTHFSpecification(name, logicSpecParamNames, specs)
@@ -907,9 +907,11 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
         }
         if (termLocality == Local) {
           quantifierTypes foreach { ty =>
-            val symbolsWithThatGoalType: Set[(String, THF.Type)] = symbolsWithGoalType(ty)
-            symbolsWithThatGoalType.foreach { case (symbolName, typeOfSymbol) =>
-              result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, typeOfSymbol, symbolName))
+            if (domainMap(ty.pretty) != ConstantDomain) {
+              val symbolsWithThatGoalType: Set[(String, THF.Type)] = symbolsWithGoalType(ty)
+              symbolsWithThatGoalType.foreach { case (symbolName, typeOfSymbol) =>
+                result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, typeOfSymbol, symbolName))
+              }
             }
           }
         }
