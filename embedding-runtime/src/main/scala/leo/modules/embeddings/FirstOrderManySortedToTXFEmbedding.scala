@@ -40,7 +40,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.0"
+  override final val version: String = "1.3.1"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
@@ -147,7 +147,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       }
     }
     private[this] def maybeExistencePredicateIfNeeded(typ: TFF.Type, worldPlaceholder: TFF.Term, term: TFF.Term): Option[TFF.Formula] = {
-      domainMap(typ) match { // If non-constant domain, then an eiw-predicate is necessary
+      if (headless) Some(existencePredicate(typ, worldPlaceholder, term))
+      else domainMap(typ) match { // If non-constant domain, then an eiw-predicate is necessary
         case ConstantDomain => None
         case _ => Some(existencePredicate(typ, worldPlaceholder, term))
       }
