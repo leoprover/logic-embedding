@@ -34,13 +34,13 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   object FOMLToTXFEmbeddingParameter extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
     //    type FOMLToTXFEmbeddingParameter = Value
-    final val POLYMORPHIC, EMPTYDOMAINS = Value
+    final val POLYMORPHIC, ALLOW_EMPTY_DOMAINS, NO_UNIVERSAL_S5 = Value
   }
   override type OptionType = FOMLToTXFEmbeddingParameter.type
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.1"
+  override final val version: String = "1.3.2"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
@@ -89,7 +89,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     ////////////////////////////////////////////////////////////////////
     // Embedding options
     private[this] val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
-    private[this] val allowEmptyDomains: Boolean = embeddingOptions.contains(EMPTYDOMAINS) // default non-empty domains
+    private[this] val allowEmptyDomains: Boolean = embeddingOptions.contains(ALLOW_EMPTY_DOMAINS) // default non-empty domains
+    private[this] val noUniversalS5: Boolean = embeddingOptions.contains(NO_UNIVERSAL_S5) // default universal S5 in monomodal
     ////////////////////////////////////////////////////////////////////
 
     def apply(): TPTP.Problem = {
@@ -403,7 +404,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       } else {
         result.append(accessbilityRelationTPTPDef())
       }
-      // Specify properties on accessibility relation if not headless
+      // Specify properties on accessibility relation if not headless (otherwise the properties are inherently
+      // part of the interpretation)
       if (!headless) {
         if (isMultiModal) {
           indexValues foreach { term =>
@@ -411,7 +413,14 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
               case Some(value) => value
               case None => if (modalDefaultExists) modalsMap.default(term) else throw new EmbeddingException(s"Modal properties for index '${term.pretty}' not defined; and no default properties specified. Aborting.")
             }
-            val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
+            val axiomNames = if (isModalSystemName(modalSystem.head)) {
+              modalSystem.head match {
+                // Special case: S5 in multi-modal logic is equivalence relation, not universal relation
+                // So use this auxiliary system instead of "regular S5" (which is the universal relation in the embedding)
+                case "$modal_system_S5" => modalSystemTable("$modal_system_S5_equiv_relation")
+                case other => modalSystemTable(other)
+              }
+            } else modalSystem
             axiomNames foreach { ax =>
               val axiom = axiomTable(Some(term))(ax)
               axiom.foreach {
@@ -423,10 +432,13 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           val modalSystemOrAxiomNameList = if (modalDefaultExists) modalsMap.default(TFF.AtomicTerm("*dummy*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
           val axiomNames = if (isModalSystemName(modalSystemOrAxiomNameList.head)) {
             val systemName = modalSystemOrAxiomNameList.head
-            if (systemName == "$modal_system_S5") {
-              isS5 = true
+            systemName match {
+              case "$modal_system_S5" =>
+                isS5 = true
+                if (noUniversalS5) modalSystemTable("$modal_system_S5_equiv_relation")
+                else modalSystemTable(systemName)
+              case other => modalSystemTable(other)
             }
-            modalSystemTable(modalSystemOrAxiomNameList.head)
           } else modalSystemOrAxiomNameList
           val modalAxioms = axiomNames.flatMap(axiomTable(None)).toSet
           result.appendAll(modalAxioms)

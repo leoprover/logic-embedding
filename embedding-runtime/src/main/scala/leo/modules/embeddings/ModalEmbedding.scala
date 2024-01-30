@@ -14,14 +14,14 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
     @unused
     final val MONOMORPHIC, POLYMORPHIC,
     MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, FORCE_HIGHERORDER, EMPTYDOMAINS, SILENT = Value
+    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, FORCE_HIGHERORDER, ALLOW_EMPTY_DOMAINS, SILENT, NO_UNIVERSAL_S5 = Value
   }
 
   override type OptionType = ModalEmbeddingOption.type
   override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
 
   override final def name: String = "$modal"
-  override final def version: String = "2.2.1"
+  override final def version: String = "2.2.2"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
     generateTHFSpecification(name, logicSpecParamNames, specs)
@@ -44,7 +44,8 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
             /* create new parameter set */
             var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
             if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
-            if (embeddingOptions.contains(ModalEmbeddingOption.EMPTYDOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.EMPTYDOMAINS
+            if (embeddingOptions.contains(ModalEmbeddingOption.ALLOW_EMPTY_DOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.ALLOW_EMPTY_DOMAINS
+            if (embeddingOptions.contains(ModalEmbeddingOption.NO_UNIVERSAL_S5)) parameters = parameters + FOMLToTXFEmbeddingParameter.NO_UNIVERSAL_S5
             try {
               FirstOrderManySortedToTXFEmbedding.apply0(problem, parameters)
             } catch {
@@ -101,7 +102,8 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
     ////////////////////////////////////////////////////////////////////
     // Embedding options
     private[this] val polymorphic: Boolean = embeddingOptions.contains(POLYMORPHIC) // default monomorphic
-    private[this] val allowEmptyDomains: Boolean = embeddingOptions.contains(EMPTYDOMAINS) // default non-empty domains
+    private[this] val allowEmptyDomains: Boolean = embeddingOptions.contains(ALLOW_EMPTY_DOMAINS) // default non-empty domains
+    private[this] val noUniversalS5: Boolean = embeddingOptions.contains(NO_UNIVERSAL_S5) // default universal S5 in monomodal
 
     private final val MODALITY_EMBEDDING_SYNTACTICAL = true
     private final val MODALITY_EMBEDDING_SEMANTICAL = false
@@ -718,7 +720,15 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
             case Some(value) => value
             case None => if (modalDefaultExists) modalsMapPredefined.default(index) else throw new EmbeddingException(s"Modal properties for index '${index.pretty}' not defined; and no default properties specified. Aborting.")
           }
-          val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
+          val axiomNames = if (isModalSystemName(modalSystem.head)) {
+            modalSystem.head match {
+              // Special case: S5 in multi-modal logic is equivalence relation, not universal relation
+              // So use this auxiliary system instead of "regular S5" (which is the universal relation in the embedding)
+              case "$modal_system_S5" => modalSystemTable("$modal_system_S5_equiv_relation")
+              case other => modalSystemTable(other)
+            }
+          } else modalSystem
+
           axiomNames foreach { ax =>
             val axiom = axiomTable.apply(ax)
             axiom.foreach { f =>
@@ -761,10 +771,13 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
         val modalSystemOrAxiomNameList = if (modalDefaultExists) modalsMapPredefined.default(THF.FunctionTerm("*dummy*", Seq.empty)) else throw new EmbeddingException(s"Modal operator properties not specified. Aborting.")
         val axiomNames = if (isModalSystemName(modalSystemOrAxiomNameList.head)) {
           val systemName = modalSystemOrAxiomNameList.head
-          if (systemName == "$modal_system_S5") {
-            isS5 = true
+          systemName match {
+            case "$modal_system_S5" =>
+              isS5 = true
+              if (noUniversalS5) modalSystemTable("$modal_system_S5_equiv_relation")
+              else modalSystemTable(systemName)
+            case other => modalSystemTable(other)
           }
-          modalSystemTable(modalSystemOrAxiomNameList.head)
         } else modalSystemOrAxiomNameList
         val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) semanticAxiomTable else syntacticAxiomTable
         val modalAxioms = axiomNames.flatMap(axiomTable).toSet
@@ -1125,6 +1138,9 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
         "$modal_axiom_T" -> Some(annotatedTHF(
           s"thf(mrel_reflexive, axiom, ![W:$worldTypeName]: (mrel @ W @ W))."
           )),
+        "$modal_axiom_M" -> Some(annotatedTHF(
+          s"thf(mrel_reflexive, axiom, ![W:$worldTypeName]: (mrel @ W @ W))."
+        )),
         "$modal_axiom_B" -> Some(annotatedTHF(
           s"thf(mrel_symmetric, axiom, ![W:$worldTypeName, V:$worldTypeName]: ((mrel @ W @ V) => (mrel @ V @ W)))."
         )),
@@ -1355,6 +1371,9 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
       Map(
         "$modal_axiom_K" -> None,
         "$modal_axiom_T" -> Some(idx => annotatedTHF(
+          s"thf('mrel_${unescapeTPTPName(idx.pretty)}_reflexive', axiom, ![W:$worldTypeName]: (mrel @ ${idx.pretty} @ W @ W))."
+        )),
+        "$modal_axiom_M" -> Some(idx => annotatedTHF(
           s"thf('mrel_${unescapeTPTPName(idx.pretty)}_reflexive', axiom, ![W:$worldTypeName]: (mrel @ ${idx.pretty} @ W @ W))."
         )),
         "$modal_axiom_B" -> Some(idx => annotatedTHF(
