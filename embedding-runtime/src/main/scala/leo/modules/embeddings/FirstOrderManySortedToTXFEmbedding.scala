@@ -135,7 +135,6 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       indexValues.addOne(idx)
     }
 
-//    private[this] var reverseSymbolTypeMap: Map[TFF.Type, Set[String]] = Map.empty.withDefaultValue(Set.empty)
     private[this] var symbolsWithGoalType: Map[TFF.Type, Set[(String, TFF.Type)]] = Map.empty.withDefaultValue(Set.empty)
     private[this] val quantifierTypes: collection.mutable.Set[TFF.Type] = collection.mutable.Set.empty
     private[this] def existencePredicate(typ: TFF.Type, worldPlaceholder: TFF.Term, term: TFF.Term): TFF.Formula = {
@@ -181,7 +180,6 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             case _ => escapedTyp
           }
           symbolsWithGoalType = symbolsWithGoalType + (argumentTypesAndGoalTypeOfTFFType(typ)._2 -> (symbolsWithGoalType(typ) + ((atom, typ))))
-//          reverseSymbolTypeMap = reverseSymbolTypeMap + (convertedType -> (reverseSymbolTypeMap(convertedType) + atom))
           TFFAnnotated(input.name, input.role, TFF.Typing(atom, convertedType), input.annotations)
         case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
       }
@@ -469,10 +467,20 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           }
         } else {
           quantifierTypes.foreach { ty =>
-            domainMap(ty) match { // FIXME: What's up the multi-modal eiw?
+            domainMap(ty) match {
               case ConstantDomain => /* should not happen */ warnings.append(s"Constant domain type '${ty.pretty}' contained in quantifierTypes. This is weird, please report.")//result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
-              case CumulativeDomain => result.append(cumulativeExistsInWorldTPTPDef(poly = polymorphic, ty))
-              case DecreasingDomain => result.append(decreasingExistsInWorldTPTPDef(poly = polymorphic, ty))
+              case CumulativeDomain =>
+                if (isMultiModal) {
+                  indexValues foreach { term =>
+                    result.append(cumulativeExistsInWorldTPTPDef(Some(term))(poly = polymorphic, ty))
+                  }
+                } else result.append(cumulativeExistsInWorldTPTPDef(None)(poly = polymorphic, ty))
+              case DecreasingDomain =>
+                if (isMultiModal) {
+                  indexValues foreach { term =>
+                    result.append(decreasingExistsInWorldTPTPDef(Some(term))(poly = polymorphic, ty))
+                  }
+                } else result.append(decreasingExistsInWorldTPTPDef(None)(poly = polymorphic, ty))
               case VaryingDomain => /* nothing */
             }
           }
@@ -494,11 +502,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           // Hence the result of f(x1,...,xn) must exist, so we need an eiw-predicate for that type
           // if the type was quantified over.
           quantifierTypes.foreach { ty =>
-//            val symbolsOfThatType = reverseSymbolTypeMap(ty)
             val symbolsWithThatGoalType: Set[(String, TFF.Type)] = symbolsWithGoalType(ty)
-//            symbolsOfThatType.foreach { sym =>
-//              result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, ty, sym))
-//            }
             symbolsWithThatGoalType.foreach { case (symbolName, typeOfSymbol) =>
               result.append(symbolExistsInAllWorldsTPTPDef(poly = polymorphic, typeOfSymbol, symbolName))
             }
@@ -566,25 +570,34 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, X:$ty0]: ( ${existencePredicateNameForType(ty)}(W,X) )).")
     }
 
-    private[this] def cumulativeExistsInWorldTPTPDef(poly: Boolean, ty: TFF.Type): TPTP.AnnotatedFormula = {
+    /* Utility naming functions to make some definitions below easier to write */
+    private[this] def accRel(index: Option[TFF.Term])(left: String, right: String): String = index match {
+      case Some(idx) => s"$accessibilityRelationName(${idx.pretty}, $left, $right)"
+      case None => s"$accessibilityRelationName($left, $right)"
+    }
+    private[this] def augmentName(index: Option[TFF.Term])(basename: String): String = index match {
+      case Some(idx) => s"${unescapeTPTPName(basename)}_${unescapeTPTPName(idx.pretty)}"
+      case None => basename
+    }
+    /* Utility naming functions end */
+
+    private[this] def cumulativeExistsInWorldTPTPDef(index: Option[TFF.Term])(poly: Boolean, ty: TFF.Type): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTFF
       val ty0 = ty.pretty
-      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_cumul"
-      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( ($existencePredicateName($ty0,W,X) & $accessibilityRelationName(W,V)) => $existencePredicateName($ty0,V,X) )).")
-      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( (${existencePredicateNameForType(ty)}(W,X) & $accessibilityRelationName(W,V)) => ${existencePredicateNameForType(ty)}(V,X) )).")
+      val basename = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_cumul"
+      if (poly) annotatedTFF(s"tff(${escapeName(augmentName(index)(basename))}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( ($existencePredicateName($ty0,W,X) & ${accRel(index)("W","V")}) => $existencePredicateName($ty0,V,X) )).")
+      else annotatedTFF(s"tff(${escapeName(augmentName(index)(basename))}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( (${existencePredicateNameForType(ty)}(W,X) & ${accRel(index)("W","V")}) => ${existencePredicateNameForType(ty)}(V,X) )).")
     }
 
-    private[this] def decreasingExistsInWorldTPTPDef(poly: Boolean, ty: TFF.Type): TPTP.AnnotatedFormula = {
+    private[this] def decreasingExistsInWorldTPTPDef(index: Option[TFF.Term])(poly: Boolean, ty: TFF.Type): TPTP.AnnotatedFormula = {
       import modules.input.TPTPParser.annotatedTFF
       val ty0 = ty.pretty
-      val name = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_decr"
-      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( ($existencePredicateName($ty0,W,X) & $accessibilityRelationName(V,W)) => $existencePredicateName($ty0,V,X) )).")
-      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( (${existencePredicateNameForType(ty)}(W,X) & $accessibilityRelationName(V,W)) => ${existencePredicateNameForType(ty)}(V,X) )).")
+      val basename = s"${unescapeTPTPName(existencePredicateName)}_${ty0}_decr"
+      if (poly) annotatedTFF(s"tff(${escapeName(augmentName(index)(basename))}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( ($existencePredicateName($ty0,W,X) & ${accRel(index)("V","W")}) => $existencePredicateName($ty0,V,X) )).")
+      else annotatedTFF(s"tff(${escapeName(augmentName(index)(basename))}, axiom, ![W:$worldTypeName, V:$worldTypeName, X:$ty0]: ( (${existencePredicateNameForType(ty)}(W,X) & ${accRel(index)("V","W")}) => ${existencePredicateNameForType(ty)}(V,X) )).")
     }
 
     private[this] def symbolExistsInAllWorldsTPTPDef(poly: Boolean, ty: TPTP.TFF.Type, symbol: String): TPTP.AnnotatedFormula = {
-//      import modules.input.TPTPParser.annotatedTFF
-//      val ty0 = ty.pretty
       val name = s"${unescapeTPTPName(existencePredicateName)}_${unescapeTPTPName(symbol)}_mono"
       val (argTypes, goalType) = argumentTypesAndGoalTypeOfTFFType(ty)
       // Build the formula !w.!x1...!xn: eiw(x1,w) => (eiw(x2,w) => ... => eiw(f(x1,...,xn),w))
@@ -602,47 +615,38 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       val body0 = existencePredicates.foldRight(existenceOfResult){case (nextPredicate,acc) => TFF.BinaryFormula(TFF.Impl, nextPredicate, acc)}
       val body = TFF.QuantifiedFormula(TFF.!, ("W", Some(worldType)) +: variables, body0)
       TFFAnnotated(name, "axiom", TFF.Logical(body), None)
-//      if (poly) annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ( $existencePredicateName($ty0,W,$symbol) )).")
-//      else annotatedTFF(s"tff(${escapeName(name)}, axiom, ![W:$worldTypeName]: ( ${existencePredicateNameForType(ty)}(W,$symbol) )).")
     }
 
     private[this] def axiomTable(index: Option[TFF.Term])(axiom: String): Option[TFFAnnotated] = {
       import modules.input.TPTPParser.annotatedTFF
-      def accRel(left: String, right: String): String = index match {
-        case Some(idx) => s"$accessibilityRelationName(${idx.pretty}, $left, $right)"
-        case None => s"$accessibilityRelationName($left, $right)"
-      }
-      def augmentName(basename: String): String = index match {
-        case Some(idx) => escapeName(s"${unescapeTPTPName(basename)}_${unescapeTPTPName(idx.pretty)}")
-        case None => basename
-      }
+      @inline def accRel0(left: String, right: String): String = accRel(index)(left,right)
       axiom match {
         case "$modal_axiom_K" => None
         case "$modal_axiom_T" | "$modal_axiom_M" => Some(
           annotatedTFF(
-            s"tff(${augmentName("mrel_reflexive")}, axiom, ![W:$worldTypeName]: (${accRel("W","W")}))."
+            s"tff(${escapeName(augmentName(index)("mrel_reflexive"))}, axiom, ![W:$worldTypeName]: (${accRel0("W","W")}))."
           )
         )
         case "$modal_axiom_B" => Some(annotatedTFF(
-          s"tff(${augmentName("mrel_symmetric")}, axiom, ![W:$worldTypeName, V:$worldTypeName]: ((${accRel("W", "V")}) => (${accRel("V", "W")})))."
+          s"tff(${escapeName(augmentName(index)("mrel_symmetric"))}, axiom, ![W:$worldTypeName, V:$worldTypeName]: ((${accRel0("W", "V")}) => (${accRel0("V", "W")})))."
         ))
         case "$modal_axiom_D" => Some(annotatedTFF(
-          s"tff(${augmentName("mrel_serial")}, axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (${accRel("W", "V")}))."
+          s"tff(${escapeName(augmentName(index)("mrel_serial"))}, axiom, ![W:$worldTypeName]: ?[V:$worldTypeName]: (${accRel0("W", "V")}))."
         ))
         case "$modal_axiom_4" => Some(annotatedTFF(
-          s"tff(${augmentName("mrel_transitive")}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel("W", "V")}) & (${accRel("V", "U")})) => (${accRel("W", "U")})))."
+          s"tff(${escapeName(augmentName(index)("mrel_transitive"))}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel0("W", "V")}) & (${accRel0("V", "U")})) => (${accRel0("W", "U")})))."
         ))
         case "$modal_axiom_5" => Some(annotatedTFF(
-          s"tff(${augmentName("mrel_euclidean")}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel("W","U")}) & (${accRel("W","V")})) => (${accRel("U","V")})))."
+          s"tff(${escapeName(augmentName(index)("mrel_euclidean"))}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel0("W","U")}) & (${accRel0("W","V")})) => (${accRel0("U","V")})))."
         ))
         case "$modal_axiom_C4" => Some(annotatedTFF(
-          s"tff(${augmentName("mrel_dense")}, axiom, ![W:$worldTypeName,U:$worldTypeName]: ((${accRel("W","U")}) => (? [V:$worldTypeName]: ((${accRel("W","V")}) & (${accRel("V","U")})))))."
+          s"tff(${escapeName(augmentName(index)("mrel_dense"))}, axiom, ![W:$worldTypeName,U:$worldTypeName]: ((${accRel0("W","U")}) => (? [V:$worldTypeName]: ((${accRel0("W","V")}) & (${accRel0("V","U")})))))."
         ))
         case "$modal_axiom_CD" => Some(annotatedTFF(
-          s"tff(${augmentName("mrel_functional")}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel("W","U")}) & (${accRel("W","V")})) => (U = V)))."
+          s"tff(${escapeName(augmentName(index)("mrel_functional"))}, axiom, ![W:$worldTypeName,V:$worldTypeName,U:$worldTypeName]: (((${accRel0("W","U")}) & (${accRel0("W","V")})) => (U = V)))."
         ))
         case "$modal_axiom_S5U" => Some(annotatedTFF(
-          s"tff(${augmentName("mrel_universal")}, axiom, ![W:$worldTypeName,V:$worldTypeName]: (${accRel("W","V")}))."
+          s"tff(${escapeName(augmentName(index)("mrel_universal"))}, axiom, ![W:$worldTypeName,V:$worldTypeName]: (${accRel0("W","V")}))."
         ))
         case _ => throw new EmbeddingException(s"Unknown modal axiom name '$axiom'.")
       }
