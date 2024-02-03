@@ -3,7 +3,8 @@ logic-embedding
 _A tool for embedding non-classical logics into higher-order logic (HOL)_
 
 The tool translates a TPTP problem statement formulated in a non-classical logic 
-(using the logic specification format) into monomorphic or polymorphic THF.
+(using the logic specification format) into classical higher-order logic
+(THF format) or first-order logic (TFF format), either using monomorphic or polymorphic types.
 A description of the tool is available as tool paper [^2], the underlying TPTP syntax is
 described in [^3].
 
@@ -36,8 +37,9 @@ problem, suitable parameters are given as properties to the logic specification:
 |-------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `$modal`          | `$domains`         | Selects whether quantification semantics is varying domains, constant domains, cumulative domains or decreasing domains.<br><br>Accepted values: `$varying`, `$constant`, `$cumulative`, `$decreasing`                                                                                                                                                          |
 |                   | `$designation`     | Selects whether non-logical symbols (constants and function symbols) have rigid or flexible designation (i.e., the same interpretation in all worlds, or possibly different ones in different worlds).<br><br> Accepted values: `$rigid`, `$flexible`                                                                                                           |
+|                   | `$terms`     | Selects whether terms, in each world `w`, are interpreted as elements from the respective domain at `w` (i.e., whether they exist in that world); this case is referred to as local terms. With global terms, terms may be interpreted as elements from arbitrary worlds (i.e., in particular, the interpretation of a term at a specific world may not exist exist at that world). <br><br> Accepted values: `$local`, `$global`                                                                                                           |
 |                   | `$modalities`      | Selects the properties for the modal operators.<br><br> Accepted values, for each modality: `$modal_system_X` where `X` ∈ {`K`, `KB`, `K4`, `K5`, `K45`, `KB5`, `D`, `DB`, `D4`, `D5`, `D45`, `T`, `B`, `S4`, `S5`, `S5U`} <br>_or a list of axiom schemes_<br> [`$modal axiom X1` , ..., `$modal axiom Xn` ] `Xi` ∈ {`K`, `T`, `B`, `D`, `4`, `5`, `CD`, `C4`} |
-| `$$hybrid`        | _same as `$modal`_ |                                                                                                                                                                                                                                                                                                                                                                 |
+| `$$hybrid`        | _same as `$modal`_ (except that `$terms` is not available, yet). |                                                                                                                                                                                                                                                                                                                                                                 |
 | `$$pal`           | _none_             |                                                                                                                                                                                                                                                                                                                                                                 |
 | `$$ddl`           | `$$system`         | Selects which DDL logic system is employed: Carmo and Jones or Åqvist's system E.<br><br>Accepted values: `$$carmoJones` or `$$aqvistE`                                                                                                                                                                                                                         |
 | `$$normative`     | `$logic`           | Selects which deontic logic system should be used for compiling the semantically underspecified statements into concrete expressions. <br><br> Accepted values: `$$sdl` for SDL, `$$carmoJones` for the DDL of Carmo and Jones, `$$aqvistE` for Aqvist's DDL E                                                                                                  |                                                                                                                                                                                                                                                                                                                                                            |
@@ -52,6 +54,7 @@ modal logic model is non-cumulative.
   tff(modal_k5, logic, $modal == [
      $designation == $rigid,
      $domains == $decreasing,
+     $terms == $local,
      $modalities == [$modal_axiom_K, $modal_axiom_5]
    ] ).
 
@@ -108,6 +111,7 @@ thf(advanced,logic,(
     $modal ==
       [ $designation == $rigid,
         $domains == $cumulative,
+        $terms == $global,
         $modalities ==
           [ $modal_system_S5,
             {$box(#a)} == $modal_system_KB,
@@ -125,6 +129,7 @@ thf(quantification,logic,(
         $domains ==
           [ $constant,
             human_type == $varying ],
+        $terms == $global,
         $modalities == $modal_system_S5 ] )).
 ```
 Here, every quantification over variables of type `human_type` are varying domain, all others constant domain.
@@ -138,6 +143,7 @@ tff(modal_system,logic,
     $modal == 
       [ $designation == $rigid,
         $domains == $cumulative,
+        $terms == $local,
         $modalities == [
           {$box(#always)} == $modal_system_S4,
           {$box(#load)} == $modal_system_K,
