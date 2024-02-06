@@ -40,7 +40,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.2"
+  override final val version: String = "1.3.3"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
@@ -460,10 +460,10 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       }
       // Specify properties on eiw-predicate if required
       if (!headless) {
-        if (isS5) {
-          /* Special case: if it's S5 (and mono-modal), every domain is identical. So specify constant domain for every type. */
+        if (isS5) { /* isS5 is false if problem is multi-modal */
+          /* Special case: if it's S5 and non-varying quantification (and mono-modal), every domain is identical. So specify constant domain for every type. */
           quantifierTypes.foreach { ty =>
-            result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
+            if (domainMap(ty) != VaryingDomain) result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
           }
         } else {
           quantifierTypes.foreach { ty =>
