@@ -40,7 +40,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.3"
+  override final val version: String = "1.3.4"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
@@ -179,7 +179,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             case o@TFF.AtomicType("$o", _) => TFF.MappingType(worldType +: argTypes, o)
             case _ => escapedTyp
           }
-          symbolsWithGoalType = symbolsWithGoalType + (argumentTypesAndGoalTypeOfTFFType(typ)._2 -> (symbolsWithGoalType(typ) + ((atom, typ))))
+          symbolsWithGoalType = symbolsWithGoalType + (goalTy -> (symbolsWithGoalType(goalTy) + ((atom, typ))))
           TFFAnnotated(input.name, input.role, TFF.Typing(atom, convertedType), input.annotations)
         case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
       }
