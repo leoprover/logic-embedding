@@ -130,6 +130,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     @inline private[this] val existencePredicateName: String = "'$exists_in_world'"
     /* This only has to work for first-order types, so just pretty instead of encodeType: */
     @inline private[this] def existencePredicateNameForType(ty: TFF.Type): String = s"'${unescapeTPTPName(existencePredicateName)}_${ty.pretty}'"
+    /* if knownToBeMonomodal is true, then a modal operator without index was used. If false, no information.  */
+    private[this] var knownToBeMonomodal: Boolean = false
     private[this] val indexValues: collection.mutable.Set[TFF.Term] = collection.mutable.Set.empty
     @inline private[this] def multimodal(idx: TFF.Term): Unit = {
       indexValues.addOne(idx)
@@ -343,12 +345,14 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       val convertedBody0 = convertFormula(body, newWorldVariable, boundVars + newWorldVariableName )
       val convertedAccessibilityRelation: TFF.Formula = index match {
         case None =>
+          knownToBeMonomodal = true
           TFF.AtomicFormula(accessibilityRelationName, Seq(world, newWorldVariable))
         case Some(idx) =>
           val escapedIndex = escapeIndex(idx)
           multimodal(escapedIndex)
           TFF.AtomicFormula(accessibilityRelationName, Seq(escapedIndex, world, newWorldVariable))
       }
+      if (knownToBeMonomodal && indexValues.nonEmpty) throw new EmbeddingException("Problem contains both unindexed and indexed modalities, which is illegal. Aborting.")
       modality match {
         case Box =>
           val convertedBody = TFF.BinaryFormula(TFF.Impl, convertedAccessibilityRelation, convertedBody0)

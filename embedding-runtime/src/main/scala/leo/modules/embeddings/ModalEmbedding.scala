@@ -221,28 +221,29 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
             val convertedConnective: THF.Formula = connective match {
               case THF.NonclassicalBox(index) => index match {
                 case Some(index0) => mboxIndexed(index0)
-                case None => str2Fun("mbox")
+                case None => knownToBeMonomodal = true;str2Fun("mbox")
               }
               case THF.NonclassicalDiamond(index) => index match {
                 case Some(index0) => mdiaIndexed(index0)
-                case None => str2Fun("mdia")
+                case None => knownToBeMonomodal = true;str2Fun("mdia")
               }
               case THF.NonclassicalLongOperator(name, index, parameters) =>
                 if (parameters.nonEmpty) throw new EmbeddingException(s"Only up to one index is allowed in box operator, but parameters '${parameters.toString()}' was given.")
                 name match {
                   case x if synonymsForBox.contains(x) => index match {
                       case Some(index0) => mboxIndexed(index0)
-                      case None => str2Fun("mbox")
+                      case None => knownToBeMonomodal = true;str2Fun("mbox")
                     }
                   case x if synonymsForDiamond.contains(x) => index match {
                     case Some(index0) => mdiaIndexed(index0)
-                    case None => str2Fun("mdia")
+                    case None => knownToBeMonomodal = true;str2Fun("mdia")
                   }
                   case "$forbidden" => index match {
                     case Some(index0) =>
                       val box = mboxIndexed(index0)
                       modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
                     case None =>
+                      knownToBeMonomodal = true
                       val box = str2Fun("mbox")
                       modules.input.TPTPParser.thf(s"^[Phi: $worldTypeName > $$o]: (${box.pretty} @ (mnot @ Phi))")
                   }
@@ -250,6 +251,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
                 }
               case _ => throw new EmbeddingException(s"Unsupported non-classical operator: '${connective.pretty}'")
             }
+            if (knownToBeMonomodal && modalOperators.nonEmpty) throw new EmbeddingException("Problem contains both unindexed and indexed modalities, which is illegal. Aborting.")
             THF.BinaryFormula(THF.App, convertedConnective, convertedBody)
           } else {
             throw new EmbeddingException(s"Only unary operators supported in modal embedding, but '${formula.pretty}' was given.")
@@ -658,6 +660,8 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
     private[this] var localFormulaExists = false
     private[this] var globalFormulaExists = false
 
+    /* if knownToBeMonomodal is true, then a modal operator without index was used. If false, no information.  */
+    private[this] var knownToBeMonomodal: Boolean = false
     private[this] val modalOperators: mutable.Set[THF.FunctionTerm] = mutable.Set.empty
     private[this] def isMultiModal: Boolean = modalOperators.nonEmpty
     private[this] def multiModal(index: THF.Formula): THF.FunctionTerm = {
