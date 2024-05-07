@@ -188,20 +188,15 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     }
 
     private[this] def convertConjectureFormulasIntoOne(input: Seq[TFFAnnotated]): TFFAnnotated = {
-      @inline def convertConjecture(f: TFFAnnotated): TPTP.TFF.Formula = {
-        f.formula match {
-          case TFF.Logical(formula) => convertAnnotatedFormula0(formula, f.role)
-          case _ => throw new EmbeddingException(s"Malformed annotated formula '${f.pretty}'.")
+      val (convertedConjectures, names) = input.map { annotated =>
+        val converted = convertAnnotatedFormula(annotated).formula match {
+          case TFF.Logical(f) => f
+          case x => throw new EmbeddingException(s"Malformed annotated formula '${x.pretty}'.")
         }
-      }
-      if (input.size == 1) {
-        val hd = input.head
-        TFFAnnotated(hd.name, hd.role, TFF.Logical(convertConjecture(hd)), hd.annotations)
-      } else {
-        val convertedConjectures = input.map(convertConjecture)
-        val formulaAsOne = convertedConjectures.reduce(TFF.BinaryFormula(TFF.&, _, _))
-        TFFAnnotated("verify", "conjecture", TFF.Logical(formulaAsOne), None)
-      }
+        (converted, annotated.name)
+      }.unzip
+      val conjecturesAsOneFormula = convertedConjectures.reduce(TFF.BinaryFormula(TFF.&, _, _))
+      TFFAnnotated(names.mkString("+"), "conjecture", TFF.Logical(conjecturesAsOneFormula), None)
     }
 
     private[this] def convertAnnotatedFormula0(formula: TFF.Formula, role: String): TFF.Formula = {
