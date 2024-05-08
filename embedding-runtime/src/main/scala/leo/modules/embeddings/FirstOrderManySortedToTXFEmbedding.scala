@@ -275,7 +275,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       convertFormula(formula, worldPlaceholder, Set.empty)
     private[this] def convertFormula(formula: TFF.Formula, worldPlaceholder: TFF.Term, boundVars: Set[String]): TFF.Formula = {
       formula match {
-        case TFF.AtomicFormula(f, args) => if (f.startsWith("$") || f.startsWith("$$")) formula else TFF.AtomicFormula(f, worldPlaceholder +: args)
+        case TFF.AtomicFormula(f, args) => if (f.startsWith("$") || f.startsWith("$$")) formula else TFF.AtomicFormula(f, worldPlaceholder +: args.map(convertTerm(_, worldPlaceholder, boundVars)))
         case TFF.UnaryFormula(connective, body) => TFF.UnaryFormula(connective, convertFormula(body, worldPlaceholder, boundVars))
         case TFF.BinaryFormula(connective, left, right) => TFF.BinaryFormula(connective,
                                                                              convertFormula(left, worldPlaceholder, boundVars),
@@ -290,8 +290,9 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
                                                                      convertTerm(body, worldPlaceholder, boundVars))
         case TFF.QuantifiedFormula(quantifier, variableList, body) =>
           val convertedBody0 = convertFormula(body, worldPlaceholder, boundVars)
+          val escapedVariableList = variableList.map { case (name, ty) => (escapeTermVariable(name), ty) }
           // existence-in-world guard only necessary in non-constant domains
-          val existenceGuards0: Seq[Option[TFF.Formula]] = variableList.map { case (varName, maybeType) =>
+          val existenceGuards0: Seq[Option[TFF.Formula]] = escapedVariableList.map { case (varName, maybeType) =>
             maybeType match {
               case Some(ty) =>
                 ty match {
@@ -309,7 +310,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
               case TFF.? => TFF.BinaryFormula(TFF.&, conjunctionOfGuards, convertedBody0)
             }
           } else convertedBody0
-          TFF.QuantifiedFormula(quantifier, variableList, convertedBody)
+          TFF.QuantifiedFormula(quantifier, escapedVariableList, convertedBody)
         case TFF.NonclassicalPolyaryFormula(connective, args) => args match {
           case Seq(body) => connective match {
             case TFF.NonclassicalLongOperator(name, idx, parameters) if synonymsForBox.contains(name) =>
@@ -363,6 +364,21 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       convertModality(Diamond, body, boundVars, world, index)
 
     private[this] def generateFreshWorldVariable(boundVars: Set[String]): String = generateFreshTPTPVariableName(localWorldVariableName, boundVars)
+    private[this] def escapeTermVariable(variableName: String): String = {
+      // Term variables are escaped so that there is no name conflict with
+      // world variables (that are named W, W0, W1, W2, ...).
+      // Currently it is W -- the actual one-letter variable is stored in `localWorldVariableName`.
+      //
+      // Escape every W in a variable name to "WW" if that variable name matches the regex W+(\d)*.
+      // Examples:
+      // "W0" -> "WW0"
+      // "W" -> "WW"
+      // "WWW" -> "WWWWWW"
+      val regex = s"^${localWorldVariableName}+\\d*"
+      if (variableName.matches(regex)) {
+        variableName.replaceAll(s"$localWorldVariableName", s"$localWorldVariableName$localWorldVariableName")
+      } else variableName
+    }
 
     private[this] def escapeIndex(idx: TFF.Term): TFF.Term = {
       val escaped = idx match {
@@ -379,6 +395,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         case TFF.AtomicTerm("$local_world", Seq()) => localWorldConstant
         /* special cases END */
         case TFF.FormulaTerm(formula) => TFF.FormulaTerm(convertFormula(formula, worldPlaceholder, boundVars))
+        case TFF.Variable(name) => TFF.Variable(escapeTermVariable(name))
         case _ => term
       }
     }
