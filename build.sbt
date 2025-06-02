@@ -1,7 +1,7 @@
 lazy val commonSettings = Seq(
   organization := "org.leo",
-  version := "1.8.5",
-  scalaVersion := "2.13.12",
+  version := "1.8.6",
+  scalaVersion := "2.13.16",
   scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
@@ -9,8 +9,8 @@ lazy val commonSettings = Seq(
   licenses += "BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause"),
   //resolvers += "Sonatype S01 OSS Snapshots" at "https://s01.oss.sonatype.org/content/repositories/snapshots",
 
-  libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.7.1",
-  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % "test"
+  libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.7.3",
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
 )
 
 lazy val embedding = (project in file("."))
