@@ -11,6 +11,9 @@ import scala.annotation.tailrec
 package object embeddings {
   final class EmbeddingException(message: String) extends RuntimeException(message)
   final class MalformedLogicSpecificationException(val spec: TPTP.AnnotatedFormula) extends RuntimeException
+  /** Exception is thrown if the input problem lies outside of scope for the first-order-logic-based
+   * modal logic embedding, e.g., contains a propositional quantification. */
+  final class UnsupportedFragmentException(msg: String) extends RuntimeException(msg)
 
 
   /////////////////////////////////////////////////////////////////////////////////////
@@ -487,7 +490,7 @@ package object embeddings {
         case "definition" => defDecls.append(f)
         case _ => remainingFormulas.append(f)
       }
-      case f => throw new EmbeddingException(s"TFF formula expected but ${f.formulaType.toString} formula given. Aborting.")
+      case f => throw new UnsupportedFragmentException(s"TFF formula expected but ${f.formulaType.toString} formula given. Aborting.")
     }
 
     if (logicSpec.isEmpty) throw new EmbeddingException("No logic specification given. Aborting.")

@@ -40,7 +40,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
           // contains extended specification entries (interaction axioms, meta-axioms, etc....)
           if (testSpecForExtendedEntries(spec)) new ModalEmbeddingImpl(problem, embeddingOptions).apply()
           else {
-            if (!embeddingOptions.contains(ModalEmbeddingOption.SILENT)) System.out.println(s"%%% First-order input detected, trying modal-logic-to-TFX embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}) ... Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
+            if (!embeddingOptions.contains(ModalEmbeddingOption.SILENT)) System.out.println(s"%%% First-order logic specification detected, trying modal-logic-to-TXF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}) ... Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
             /* create new parameter set */
             var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
             if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
@@ -49,8 +49,8 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
             try {
               FirstOrderManySortedToTXFEmbedding.apply0(problem, parameters)
             } catch {
-              case _:FirstOrderManySortedToTXFEmbedding.UnsupportedFragmentException =>
-                if (!embeddingOptions.contains(ModalEmbeddingOption.SILENT)) System.out.println("%%% Info: Modal-logic-to-TFX embedding failed (due to unsupported language features). Falling back to higher-order embedding ...")
+              case _:UnsupportedFragmentException =>
+                if (!embeddingOptions.contains(ModalEmbeddingOption.SILENT)) System.out.println("%%% Info: Modal-logic-to-TXF embedding failed (due to unsupported language features). Falling back to higher-order embedding ...")
               new ModalEmbeddingImpl(problem, embeddingOptions).apply()
             }
 

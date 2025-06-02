@@ -27,9 +27,6 @@ import scala.annotation.unused
  */
 object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingLike {
 
-  /** Exception is thrown if the input problem lies outside of scope for the first-order-logic-based
-   * modal logic embedding, e.g., contains a propositional quantification. */
-  final class UnsupportedFragmentException(msg: String) extends RuntimeException(msg)
 
   object FOMLToTXFEmbeddingParameter extends Enumeration {
     // Hidden on purpose, to allow distinction between the object itself and its values.
@@ -40,7 +37,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.5"
+  override final val version: String = "1.3.6"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
