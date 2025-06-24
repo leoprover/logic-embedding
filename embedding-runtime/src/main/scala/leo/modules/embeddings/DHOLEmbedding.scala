@@ -7,6 +7,9 @@ import leo.datastructures.TPTP.THF.FunctionTerm
 
 import scala.annotation.tailrec
 
+/**
+ * @author Colin Rothgang, Daniel Renalter
+ */
 object DHOLEmbedding extends Embedding {
   import DHOLEmbeddingUtils._
   var constants : List[(String, TPTP.THF.Type)] = Nil

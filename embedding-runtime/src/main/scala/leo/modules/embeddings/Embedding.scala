@@ -2,6 +2,7 @@ package leo.modules.embeddings
 
 import leo.datastructures.TPTP
 
+/** Embeddings that generates exactly one output file (as opposed to [[EmbeddingN]] where n results are generated). */
 trait Embedding {
   /** The type of parameter options provided by the embedding instance. */
   type OptionType <: Enumeration

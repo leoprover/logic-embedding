@@ -2,8 +2,7 @@ package leo.modules
 
 import leo.datastructures.TPTP
 import leo.datastructures.TPTP.{AnnotatedFormula, Problem}
-import leo.modules.embeddings.{Embedding, EmbeddingException, Library, getLogicFromSpec, getLogicSpecFromProblem}
-import leo.modules.embeddings.MalformedLogicSpecificationException
+import leo.modules.embeddings.{Embedding, EmbeddingException, EmbeddingN, Library, MalformedLogicSpecificationException, getLogicFromSpec, getLogicSpecFromProblem}
 import leo.modules.input.TPTPParser
 
 import scala.io.Source
@@ -12,7 +11,7 @@ import scala.collection.mutable
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
-  final val version: String = "1.8.6"
+  final val version: String = "1.8.8"
 
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None
@@ -36,8 +35,6 @@ object EmbeddingApp {
 
       try {
         parseArgs(args.toSeq)
-        // Allocate output file
-        outfile = Some(if (outputFileName.isEmpty) new PrintWriter(System.out) else new PrintWriter(new File(outputFileName.get)))
         // Read input
         infile = Some(if (inputFileName == "-") io.Source.stdin else io.Source.fromFile(inputFileName))
         // Create local copy if it is from stdin; since we cannot reset the inputstreamreader afterwards
@@ -51,7 +48,8 @@ object EmbeddingApp {
         val parsedInput = TPTPParser.problem(infile.get)
         val maybeLogicSpec = getLogicSpecFromProblem(parsedInput.formulas)
         val maybeGoalLogic = getLogic(maybeLogicSpec)
-        val result = maybeGoalLogic match {
+        // result is not a sequence, we need to print every entry individually
+        val results: Seq[String] = maybeGoalLogic match {
           case None => // no goal logic set, return input file as-is
             val sb: mutable.StringBuilder = new mutable.StringBuilder()
             sb.append("% Info: No logic specification given, input problem is returned unchanged. Maybe specify logic with the -l option?\n")
@@ -64,33 +62,53 @@ object EmbeddingApp {
               sb.append("\n")
             }
             if (tstpOutput) sb.append(s"% SZS output end ListOfFormulae for $inputFileName\n")
-            sb.toString()
+            Seq(sb.toString())
           case Some(goalLogic) => // goal logic set, do the embedding steps
             val embeddingFunction = try {
               Library.embeddingTable(goalLogic)
             } catch {
               case _: NoSuchElementException => throw new UnsupportedLogicException(goalLogic)
             }
-            // Transform embedding parameters
-            val parameters = parameterNames.map { p =>
-              try {
-                embeddingFunction.embeddingParameter.withName(p)
-              } catch {
-                case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
-              }
-            }
             // Do embedding
             // First: Prepend logic specification if none exists.
             val logicSpec = if (maybeLogicSpec.isDefined) maybeLogicSpec.get else embeddingFunction.generateSpecification(specs)
             val problemToBeEmbedded = if (maybeLogicSpec.isDefined) parsedInput else TPTP.Problem(parsedInput.includes, parsedInput.formulas.prepended(logicSpec), Map.empty)
             // Embedding
-            val embeddedProblem = embeddingFunction.apply(problemToBeEmbedded, parameters)
-            generateResult(embeddedProblem, logicSpec, embeddingFunction)
+            embeddingFunction match {
+              case embeddingFunctionN: EmbeddingN =>
+                // Transform embedding parameters (explicitly repeated because of subtype incompability)
+                val parameters = parameterNames.map { p =>
+                  try {
+                    embeddingFunctionN.embeddingParameter.withName(p)
+                  } catch {
+                    case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
+                  }
+                }
+                val embeddedProblems = embeddingFunctionN.applyN(problemToBeEmbedded, parameters)
+                embeddedProblems.map(eb => generateResult(eb, logicSpec, embeddingFunction))
+              case _ =>
+                // Transform embedding parameters
+                val parameters = parameterNames.map { p =>
+                  try {
+                    embeddingFunction.embeddingParameter.withName(p)
+                  } catch {
+                    case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
+                  }
+                }
+                val embeddedProblem = embeddingFunction.apply(problemToBeEmbedded, parameters)
+                Seq(generateResult(embeddedProblem, logicSpec, embeddingFunction))
+            }
         }
-        // Write result
-        outfile.get.print(result)
-        outfile.get.flush()
-        // Error handling
+        // Allocate output files and write result
+        for (result <- results.zipWithIndex) {
+          outfile = Some(if (outputFileName.isEmpty) new PrintWriter(System.out) else new PrintWriter(new File(s"${outputFileName.get}.${result._2}")))
+          // Write result
+          outfile.get.print(result._1)
+          outfile.get.flush()
+          // if it is stdout, dont close yet (will be closed anyway in finally clause below)
+          if (outputFileName.nonEmpty) outfile.get.close()
+        }
+      // Error handling
       } catch {
         case e: EmbeddingException =>
           error = Some(s"An error occurred during embedding: ${e.getMessage}")
