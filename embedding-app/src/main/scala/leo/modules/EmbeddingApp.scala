@@ -76,7 +76,8 @@ object EmbeddingApp {
             // Embedding
             embeddingFunction match {
               case embeddingFunctionN: EmbeddingN =>
-                // Transform embedding parameters (explicitly repeated because of subtype incompability)
+                // Transform embedding parameters (explicitly repeated because of subtype incompability. Ugly, but small scope.)
+                //noinspection DuplicatedCode
                 val parameters = parameterNames.map { p =>
                   try {
                     embeddingFunctionN.embeddingParameter.withName(p)
@@ -88,6 +89,7 @@ object EmbeddingApp {
                 embeddedProblems.map(eb => generateResult(eb, logicSpec, embeddingFunction))
               case _ =>
                 // Transform embedding parameters
+                //noinspection DuplicatedCode
                 val parameters = parameterNames.map { p =>
                   try {
                     embeddingFunction.embeddingParameter.withName(p)
