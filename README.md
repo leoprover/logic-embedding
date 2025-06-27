@@ -198,6 +198,9 @@ usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <
 ## Contact
 In case of questions or comments, feel free to contact Alexander Steen (alexander.steen *at* uni-greifswald.de).
 
+## Contributors
+The logic embedding tool received valuable contributions by several people. See the `CONTRIBUTORS` file for details.
+
 ## Notes
 The modal logic embedding is an extended and consolidated tool inspired by Tobias Gleißner's embedding tool at the leoprover/embed_modal repository.
 This version makes use of the `scala-tptp-parser` library from leoprover/scala-tptp-parser that is much faster, in particular for larger input problems.
