@@ -1,7 +1,7 @@
 package leo.modules.embeddings
 
 import leo.datastructures.TPTP
-import TPTP.{AnnotatedFormula, Annotations, THF}
+import TPTP.{AnnotatedFormula, THF}
 import leo.datastructures.TPTP.THF.FunctionTerm
 
 import scala.annotation.tailrec
@@ -29,16 +29,7 @@ object DHOLEmbedding extends Embedding {
    * targeted by this embedding. */
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  {
     import leo.modules.input.TPTPParser.annotatedTHF
-    val spec: StringBuilder = new StringBuilder
-    spec.append("thf(logic_spec, logic, (")
-    spec.append(s"$name == [")
-    spec.append("$$system == ")
-    specs.get("$$system") match {
-      case Some(value) => spec.append(value)
-      case None => throw new EmbeddingException("Not enough logic specification parameters given.")
-    }
-    spec.append("] )).")
-    annotatedTHF(spec.toString)
+    annotatedTHF(s"thf(logic_spec, logic, $name).")
   }
 
   override def apply(problem: TPTP.Problem, embeddingOptions: Set[DHOLEmbeddingParameter.Value]): TPTP.Problem =
@@ -125,7 +116,6 @@ object DHOLEmbedding extends Embedding {
     }
 
     private[this] def convertFormula(formula: TPTP.THF.Formula, variables: List[(String, TPTP.THF.Type)]): TPTP.THF.Formula = {
-      import TPTP.THF.App
       formula match {
         case THF.FunctionTerm(f, args) =>
           val convertedArgs = args.map(x => convertFormula(x, variables))

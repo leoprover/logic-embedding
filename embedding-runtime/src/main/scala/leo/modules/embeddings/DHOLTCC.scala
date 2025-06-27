@@ -1,12 +1,9 @@
 package leo.modules.embeddings
 
-
 import leo.datastructures.TPTP
-import TPTP.{AnnotatedFormula, Annotations, THF}
-import leo.datastructures.TPTP.THF.FunctionTerm
+import TPTP.THF
 
 import scala.annotation.tailrec
-import scala.math.Ordering.String
 
 /**
  * @author Daniel Renalter, 2025
@@ -37,16 +34,7 @@ object DHOLTCC extends EmbeddingN {
    * targeted by this embedding. */
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  {
     import leo.modules.input.TPTPParser.annotatedTHF
-    val spec: StringBuilder = new StringBuilder
-    spec.append("thf(logic_spec, logic, (")
-    spec.append(s"$name == [")
-    spec.append("$$system == ")
-    specs.get("$$system") match {
-      case Some(value) => spec.append(value)
-      case None => throw new EmbeddingException("Not enough logic specification parameters given.")
-    }
-    spec.append("] )).")
-    annotatedTHF(spec.toString)
+    annotatedTHF(s"thf(logic_spec, logic, $name).")
   }
 
   override def applyN(problem: TPTP.Problem, embeddingOptions: Set[DHOLEmbeddingParameter.Value]): Seq[TPTP.Problem] = new DHOLTCImpl(problem).apply()
