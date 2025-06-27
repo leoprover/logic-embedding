@@ -1,0 +1,5 @@
+The logic embedding tool is primiarily developed by Alexander Steen.
+It has received major contributions by the following people:
+  - Colin Rothgang (First implementation of the $$dhol embedding for dependently-typed HOL)
+  - Melanie Taprogge (Implementation of interactions for modal logic embeddings)
+  - Daniel Renalter (Substantial overhaul of the $$dhol embedding)
