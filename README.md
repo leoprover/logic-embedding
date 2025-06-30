@@ -28,7 +28,7 @@ Currently, the following logics (logic families) are supported:
 | `$$pal`            | Public announcement logic (PAL) is a propositional epistemic logic that allows for reasoning about knowledge. In contrast to $modal, PAL is a dynamic logic that supports updating the knowledge of agents via so-called announcement operators. The knowledge operator Ki is given by `{$$knows(#i)}`, the common knowledge operator CA , with A a set of agents, by `{$$common($$group := [...])}`, and the announcement [!ϕ] is represented as `{$$announce($$formula := phi)}`.                                                                                                                                                               |
 | `$$ddl`            | Deontic logics are formalisms for reasoning over norms, obligations, permissions and prohibitions. In contrast to modal logics used for this purpose (e.g., modal logic D), dyadic deontic logics (DDLs), named $$ddl, offer a more sophisticated representation of conditional norms using a dyadic obligation operator O(ϕ/ψ). They address paradoxes of other deontic logics in the context of so-called contrary-to-duty (CTD) situations. The concrete DDLs supported are the propositional system by Carmo and Jones and Åqvist’s propositional system E. The dyadic deontic operator O is represented by `{$$obl}` (short for obligatory). |
 | `$$normative`      | Normative meta form, a semantically underspecified format for expressing deontic logic concepts. Can be translated into standard deontic logic (SDL/modal logics) or DDL (see above) as desired, see [^1] for details. Conditional obligations, permissions, prohibitions and expressied via `{$$obligation} @ (body, head)`, `{$$permission} @ (body, head)`, and `{$$prohibition} @ (body, head)`, respectively. Counts-as norms (constitutional norms) are expressed via `{$$constitutive} @ (body, head)`. It depends on the target logic how these concepts are compiled into a concrete logical format.                                     |
-| `$$dhol`           | Dependently-typed higher-order logic, as defined by TBA (CITE?) |
+| `$$dhol`           | Dependently-typed higher-order logic, as defined by [^5]. |
 | `$$dholtc`         | Embedding of type checking constraints for dependently-typed HOL, as defined by TBA (CITE?) |
 
 ### Logic specifications
@@ -197,7 +197,7 @@ usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <
 
 ## Contact
 In case of questions or comments, feel free to contact Alexander Steen (alexander.steen *at* uni-greifswald.de).
-
+[^2]
 ## Contributors
 The logic embedding tool received valuable contributions by several people. See the `CONTRIBUTORS` file for details.
 
@@ -210,3 +210,4 @@ This version makes use of the `scala-tptp-parser` library from leoprover/scala-t
 [^2]: A. Steen. An Extensible Logic Embedding Tool for Lightweight Non-Classical Reasoning. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). CEUR Workshop Proceedings, Vol. 3201, CEUR-WG.org, 2022. Available at https://ceur-ws.org/Vol-3201/paper13.pdf.
 [^3]: A. Steen, D. Fuenmayor, T. Gleißner, G. Sutcliffe and C. Benzmüller. Automated Reasoning in Non-classical Logics in the TPTP World. In Eighth Workshop on Practical Aspects of Automated Reasoning (PAAR 2022). CEUR Workshop Proceedings, Vol. 3201, CEUR-WG.org, 2022. Available at https://ceur-ws.org/Vol-3201/paper11.pdf.
 [^4]: M. Taprogge, A. Steen. Flexible Automation of Quantified Multi-Modal Logics with Interaction. In KI 2023: Advances in Artificial Intelligence. 46th German Conference on AI, Berlin, Germany, September 26–29, 2023, Proceedings, LNCS, Vol. 14236, Springer, 2023. 
+[^5]: C. Rothgang, F. Rabe, and C. Benzmüller. Theorem Proving in Dependently Typed Higher-Order Logic. In B. Pientka and C. Tinelli, editors, Automated Deduction, pages 438–455. Springer, 2023.
