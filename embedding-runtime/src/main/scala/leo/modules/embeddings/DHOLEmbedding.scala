@@ -142,7 +142,7 @@ object DHOLEmbedding extends Embedding {
         case THF.ConnectiveTerm(_) => formula
         case THF.QuantifiedFormula(quantifier, variableList, body) =>
           if (List(THF.@+, THF.@-, THF.?*).contains(quantifier))
-            throw new EmbeddingException("Unsupported quantifier: " + quantifier)
+            throw new UnsupportedFragmentException("Unsupported quantifier: " + quantifier)
           else {
             variableList match {
               case (tp@(tpName, THF.FunctionTerm("$tType", Seq())))+:shorterList =>

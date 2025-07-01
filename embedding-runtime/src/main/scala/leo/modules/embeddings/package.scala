@@ -11,8 +11,8 @@ import scala.annotation.tailrec
 package object embeddings {
   final class EmbeddingException(message: String) extends RuntimeException(message)
   final class MalformedLogicSpecificationException(val spec: TPTP.AnnotatedFormula) extends RuntimeException
-  /** Exception is thrown if the input problem lies outside of scope for the first-order-logic-based
-   * modal logic embedding, e.g., contains a propositional quantification. */
+  /** Exception is thrown if the input problem lies outside the scope of an embedding (i.e. due to unsupported
+   * language features). */
   final class UnsupportedFragmentException(msg: String) extends RuntimeException(msg)
 
 

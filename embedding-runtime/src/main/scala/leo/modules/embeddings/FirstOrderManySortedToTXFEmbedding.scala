@@ -43,11 +43,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     generateTFFSpecification(name, logicSpecParamNames, specs)
 
   override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
-    try {
-      apply0(problem, embeddingOptions)
-    } catch {
-      case e:UnsupportedFragmentException => throw new EmbeddingException(e.getMessage)
-    }
+    apply0(problem, embeddingOptions)
 
   protected[embeddings] final def apply0(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
     new FirstOrderManySortedToTXFEmbeddingImpl(problem, embeddingOptions).apply()
