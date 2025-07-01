@@ -2,7 +2,7 @@ package leo.modules
 
 import leo.datastructures.TPTP
 import leo.datastructures.TPTP.{AnnotatedFormula, Problem}
-import leo.modules.embeddings.{Embedding, EmbeddingException, EmbeddingN, Library, MalformedLogicSpecificationException, getLogicFromSpec, getLogicSpecFromProblem}
+import leo.modules.embeddings.{Embedding, EmbeddingException, UnsupportedFragmentException, EmbeddingN, Library, MalformedLogicSpecificationException, getLogicFromSpec, getLogicSpecFromProblem}
 import leo.modules.input.TPTPParser
 
 import scala.io.Source
@@ -31,7 +31,7 @@ object EmbeddingApp {
     else {
       var infile: Option[Source] = None
       var outfile: Option[PrintWriter] = None
-      var error: Option[String] = None
+      var error: Option[(String, String)] = None // Tuple (SZS value, message)
 
       try {
         parseArgs(args.toSeq)
@@ -113,37 +113,40 @@ object EmbeddingApp {
       // Error handling
       } catch {
         case e: EmbeddingException =>
-          error = Some(s"An error occurred during embedding: ${e.getMessage}")
+          error = Some("Error", s"An error occurred during embedding: ${e.getMessage}")
+        case e: UnsupportedFragmentException =>
+          error = Some("Inappropriate", s"The input file contains unsupported language features: ${e.getMessage}")
         case e: IllegalArgumentException =>
-          error = if (e.getMessage == null) Some(e.toString) else Some(e.getMessage)
+          error = if (e.getMessage == null) Some("UsageError", e.toString) else Some("UsageError", e.getMessage)
           if (!tstpOutput) usage()
         case e: UnsupportedLogicException =>
-          error = Some(s"Unsupported logic '${e.logic}'. Aborting.")
+          error = Some("Inappropriate", s"Unsupported logic '${e.logic}'. Aborting.")
         case e: UnknownParameterException =>
-          error = Some(s"Parameter ${e.parameterName} is unknown. Valid parameters are: ${e.allowedParameters}")
+          error = Some("UsageError", s"Parameter ${e.parameterName} is unknown. Valid parameters are: ${e.allowedParameters}")
         case e: MalformedLogicSpecificationException =>
-          error = Some(s"Logic specification in the input file cannot be interpreted: ${e.spec.pretty}")
+          error = Some("Unsemantic", s"Logic specification in the input file cannot be interpreted: ${e.spec.pretty}")
         case e: FileNotFoundException =>
-          error = Some(s"File cannot be found or is not readable/writable: ${e.getMessage}")
+          error = Some("InputError", s"File cannot be found or is not readable/writable: ${e.getMessage}")
         case e: TPTPParser.TPTPParseException =>
-          error = Some(s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
+          error = Some("SyntaxError", s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
         case e: Throwable =>
-          error = Some(s"Unexpected error: ${e.getMessage}. This is considered an implementation error, please report this!")
+          error = Some("Error", s"Unexpected error: ${e.getMessage}. This is considered an implementation error, please report this!")
       } finally {
         if (error.nonEmpty) {
+          val (szsStatus, errorMessage) = error.get
           if (tstpOutput) {
             if (outfile.isDefined) {
-              outfile.get.println(s"% SZS status Error for $inputFileName : ${error.get}\n")
+              outfile.get.println(s"% SZS status $szsStatus for $inputFileName : $errorMessage\n")
               outfile.get.flush()
-            } else println(s"% SZS status Error for $inputFileName : ${error.get}\n")
+            } else println(s"% SZS status $szsStatus for $inputFileName : $errorMessage\n")
           } else {
             if (outfile.isDefined) {
-              outfile.get.println(s"Error: ${error.get}")
+              outfile.get.println(s"$szsStatus: $errorMessage")
               outfile.get.flush()
               if (outputFileName.isDefined) {
-                if (outputFileName.get != "-") System.err.println(s"Error: ${error.get}")
+                if (outputFileName.get != "-") System.err.println(s"$szsStatus: $errorMessage")
               }
-            } else println(s"Error: ${error.get}")
+            } else println(s"$szsStatus: $errorMessage")
           }
         }
         try { infile.foreach(_.close())  } catch { case _:Throwable => () }
