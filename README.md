@@ -12,7 +12,7 @@ For references to the tool, please use [![DOI](https://zenodo.org/badge/32868492
 
 
 ## Logics
-We refer to the TPTP non-classical logic extension at [http://tptp.org/NonClassicalLogic/](https://tptp.org/UserDocs/TPTPLanguage/TPTPLanguage.shtml#NonClassicalLogics) for a description of the
+We refer to the TPTP non-classical logic extension at [tptp.org](https://tptp.org/UserDocs/TPTPLanguage/TPTPLanguage.shtml#NonClassicalLogics) for a description of the
 logic specification format and the problem syntax.
 
 
