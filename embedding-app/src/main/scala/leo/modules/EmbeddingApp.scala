@@ -11,7 +11,7 @@ import scala.collection.mutable
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
-  final val version: String = "1.8.8"
+  final val version: String = "1.9.0"
 
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None
@@ -102,13 +102,22 @@ object EmbeddingApp {
             }
         }
         // Allocate output files and write result
-        for (result <- results.zipWithIndex) {
-          outfile = Some(if (outputFileName.isEmpty) new PrintWriter(System.out) else new PrintWriter(new File(s"${outputFileName.get}.${result._2}")))
+        if (results.size == 1) {
+          outfile = Some(if (outputFileName.isEmpty) new PrintWriter(System.out) else new PrintWriter(new File(s"${outputFileName.get}")))
           // Write result
-          outfile.get.print(result._1)
+          outfile.get.print(results.head)
           outfile.get.flush()
           // if it is stdout, dont close yet (will be closed anyway in finally clause below)
           if (outputFileName.nonEmpty) outfile.get.close()
+        } else {
+          for (result <- results.zipWithIndex) {
+            outfile = Some(if (outputFileName.isEmpty) new PrintWriter(System.out) else new PrintWriter(new File(s"${outputFileName.get}.${result._2}")))
+            // Write result
+            outfile.get.print(result._1)
+            outfile.get.flush()
+            // if it is stdout, dont close yet (will be closed anyway in finally clause below)
+            if (outputFileName.nonEmpty) outfile.get.close()
+          }
         }
       // Error handling
       } catch {
@@ -190,21 +199,25 @@ object EmbeddingApp {
   }
 
   private[this] final def usage(): Unit = {
-    println(s"usage: $name [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <problem file> [<output file>]")
+    println(s"usage: $name [options] <problem file>")
     println(
       s"""
-        | Embed a (non-classical) TPTP problem file into classical higher-order logic (HOL). The logic
-        | is chosen based on the logic specification within the input file. If there is no logic specification
-        | the input problem is returned unchanged (unless the -l option is given).
+        | Embed a (non-classical) TPTP problem file into classical higher-order logic (HOL).
+        | The logic is chosen based on the logic specification within the input file. If there
+        | is no logic specification the input problem is returned unchanged
+        | (unless the -l option is given, see below).
         |
         | <problem file> can be either a file name or '-' (without parentheses) for stdin.
-        | If <output file> is specified, the result is written to <output file>, otherwise to stdout.
+        | If <output file> is specified (using --output, see below), the result is written to
+        | <output file>, otherwise to stdout.
         |
         | Options:
         |  -l <logic>
-        |     If <problem file> does not contain a logic specification statement, explicitly set
-        |     the input format to <logic>. Ignored if <problem file> contains a logic specification statement.
-        |     Supported <logic>s are: ${Library.embeddingTable.keySet.mkString(", ")}
+        |     If <problem file> does not contain a logic specification statement, -l <logic>
+        |     explicitly sets the input logic to <logic>.
+        |     This option is ignored if <problem file> contains a logic specification statement.
+        |     Supported <logic>s are:
+        |     ${Library.embeddingTable.keySet.mkString(", ")}
         |
         |  -p <parameter>
         |     Pass transformation parameter <parameter> to the embedding procedure.
@@ -218,6 +231,12 @@ object EmbeddingApp {
         |     Enable TSTP-compatible output: The output in <output file> (or stdout) will
         |     start with a SZS status value and the output will be wrapped within
         |     SZS BEGIN and SZS END block delimiters. Disabled by default.
+        |
+        |  --output <output file>
+        |     Do not write the result to stdout, but to <output file>.
+        |     This will overwrite <output file> if it already exists.
+        |     If the embedding potentially outputs multiple results, the output files
+        |     are named <output file>.0, <output file>.1, <output file>.2, etc.
         |
         |  --version
         |     Prints the version number of the executable and terminates.
@@ -246,14 +265,13 @@ object EmbeddingApp {
         case Seq("--tstp", rest@_*) =>
           args0 = rest
           tstpOutput = true
-        case Seq(f) =>
-          args0 = Seq.empty
-          inputFileName = f
-        case Seq(f, o) =>
-          args0 = Seq.empty
-          inputFileName = f
+        case Seq("--output", o, rest@_*) =>
+          args0 = rest
           outputFileName = Some(o)
-        case _ => throw new IllegalArgumentException("Unrecognized arguments.")
+        case Seq(f, rest@_*) if inputFileName.isEmpty =>
+          args0 = rest
+          inputFileName = f
+        case _ => throw new IllegalArgumentException(s"Unrecognized or superfluous options/arguments: ${args0.mkString(",")}.")
       }
     }
   }
