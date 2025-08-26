@@ -163,16 +163,23 @@ An executable JAR file is distributed with the most current release.
 
 
 ```
-usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <problem file> [<output file>]
+usage: $name [options] <problem file>
+ Embed a (non-classical) TPTP problem file into classical higher-order logic (HOL).
+ The logic is chosen based on the logic specification within the input file. If there
+ is no logic specification the input problem is returned unchanged
+ (unless the -l option is given, see below).
 
  <problem file> can be either a file name or '-' (without parentheses) for stdin.
- If <output file> is specified, the result is written to <output file>, otherwise to stdout.
+ If <output file> is specified (using --output, see below), the result is written to
+ <output file>, otherwise to stdout.
 
  Options:
   -l <logic>
-     If <problem file> does not contain a logic specification statement, explicitly set
-     the input format to <logic>. Ignored, if <problem file> contains a logic specification statement.
-     Supported <logic>s are: $modal, $epistemic_modal, $$ddl, $$pal, $alethic_modal, $$hybrid, $deontic_modal
+     If <problem file> does not contain a logic specification statement, -l <logic>
+     explicitly sets the input logic to <logic>.
+     This option is ignored if <problem file> contains a logic specification statement.
+     Supported <logic>s are:
+     ${Library.embeddingTable.keySet.mkString(", ")}
 
   -p <parameter>
      Pass transformation parameter <parameter> to the embedding procedure.
@@ -186,6 +193,12 @@ usage: embedproblem [-l <logic>] [-p <parameter>] [-s <spec>=<value>] [--tstp] <
      Enable TSTP-compatible output: The output in <output file> (or stdout) will
      start with a SZS status value and the output will be wrapped within
      SZS BEGIN and SZS END block delimiters. Disabled by default.
+
+  --output <output file>
+     Do not write the result to stdout, but to <output file>.
+     This will overwrite <output file> if it already exists.
+     If the embedding potentially outputs multiple results, the output files
+     are named <output file>.0, <output file>.1, <output file>.2, etc.
 
   --version
      Prints the version number of the executable and terminates.
