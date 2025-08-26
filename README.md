@@ -163,7 +163,7 @@ An executable JAR file is distributed with the most current release.
 
 
 ```
-usage: $name [options] <problem file>
+usage: embedproblem [options] <problem file>
  Embed a (non-classical) TPTP problem file into classical higher-order logic (HOL).
  The logic is chosen based on the logic specification within the input file. If there
  is no logic specification the input problem is returned unchanged
