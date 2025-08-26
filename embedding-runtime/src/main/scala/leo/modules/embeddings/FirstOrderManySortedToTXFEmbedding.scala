@@ -37,7 +37,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.6"
+  override final val version: String = "1.3.7"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
@@ -174,7 +174,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             case o@TFF.AtomicType("$o", _) => TFF.MappingType(worldType +: argTypes, o)
             case _ => escapedTyp
           }
-          symbolsWithGoalType = symbolsWithGoalType + (goalTy -> (symbolsWithGoalType(goalTy) + ((atom, typ))))
+          symbolsWithGoalType = symbolsWithGoalType + (goalTy -> (symbolsWithGoalType(goalTy) + (atom -> typ)))
           TFFAnnotated(input.name, input.role, TFF.Typing(atom, convertedType), input.annotations)
         case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
       }
@@ -240,7 +240,11 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     private[this] def convertInterpretationFormula(formula: TFF.Formula): TFF.Formula = {
       formula match {
         case TFF.AtomicFormula("$accessible_world", Seq(w, v)) => TFF.AtomicFormula(accessibilityRelationName, Seq(w, v))
-        case TFF.AtomicFormula("$in_world", Seq(world, TFF.FormulaTerm(worldFormula))) =>
+        case TFF.AtomicFormula("$in_world", Seq(world, TFF.AtomicTerm(f, args))) => // Special case: parser cannot distinguish it from formula, but after $in_world comes a formula.
+          convertFormula(TFF.AtomicFormula(f, args), worldPlaceholder = world)
+        case TFF.AtomicFormula("$in_world", Seq(world, TFF.Variable(v))) => // Special case: parser cannot distinguish it from formula, but after $in_world comes a formula.
+          convertFormula(TFF.FormulaVariable(v), worldPlaceholder = world)
+        case TFF.AtomicFormula("$in_world", Seq(world, TFF.FormulaTerm(worldFormula))) => // general case, interpret as modal formula in world 'world'
           convertFormula(worldFormula, worldPlaceholder = world)
         case TFF.Equality(left, right) => TFF.Equality(convertInterpretationTerm(left),convertInterpretationTerm(right))
         case TFF.Inequality(left, right) => TFF.Inequality(convertInterpretationTerm(left),convertInterpretationTerm(right))
