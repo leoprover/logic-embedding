@@ -140,6 +140,7 @@ object EmbeddingApp {
           error = Some("SyntaxError", s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
         case e: Throwable =>
           error = Some("Error", s"Unexpected error: ${e.getMessage}. This is considered an implementation error, please report this!")
+          e.printStackTrace()
       } finally {
         if (error.nonEmpty) {
           val (szsStatus, errorMessage) = error.get
