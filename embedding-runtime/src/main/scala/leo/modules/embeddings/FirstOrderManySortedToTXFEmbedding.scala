@@ -92,6 +92,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       val (conjectureFormulas, nonConjectureFormulas) = otherFormulas.partition(_.role.startsWith("conjecture"))
 
       createState(spec)
+      val convertedSortFormulas = sortFormulas.map(convertSortFormula)
       val convertedTypeFormulas = typeFormulas.map(convertTypeFormula)
       val convertedDefinitionFormulas = definitionFormulas.map(convertAnnotatedFormula)
       val convertedNonConjectureFormulas = nonConjectureFormulas.map(convertAnnotatedFormula)
@@ -99,10 +100,10 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       val generatedMetaPreFormulas: Seq[AnnotatedFormula] = generateMetaPreFormulas()
       val generatedMetaPostFormulas: Seq[AnnotatedFormula] = generateMetaPostFormulas()
 
-      val result = sortFormulas ++ generatedMetaPreFormulas ++ convertedTypeFormulas ++
+      val result = convertedSortFormulas ++ generatedMetaPreFormulas ++ convertedTypeFormulas ++
         generatedMetaPostFormulas ++ convertedDefinitionFormulas  ++ convertedNonConjectureFormulas ++ convertedConjectureFormulasAsOne
       val extraComments = generateExtraComments(warnings.toSeq, result.headOption,
-        sortFormulas.headOption, generatedMetaPreFormulas.headOption, convertedTypeFormulas.headOption,
+        convertedSortFormulas.headOption, generatedMetaPreFormulas.headOption, convertedTypeFormulas.headOption,
         generatedMetaPostFormulas.headOption, convertedDefinitionFormulas.headOption, convertedNonConjectureFormulas.headOption)
       val updatedComments = problem.formulaComments.concat(extraComments)
       TPTP.Problem(problem.includes, result, updatedComments)
@@ -153,6 +154,44 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     private[this] var isS5 = false // True iff mono-modal and modality is S5
     private[this] var headless = true // True iff embedding is used for model verification only (i.e., modal logic parameters were not given in logic spec)
 
+    /** Only conversion needed: If sort formula was introduced as interpretation domain type, then
+     * update role from "interpretation-type" to "type". */
+    private[this] def convertSortFormula(input: TFFAnnotated): TFFAnnotated = {
+      input.role match {
+        case "interpretation-type" => TFFAnnotated(input.name, "type", input.formula, input.annotations)
+        case _ => input
+      }
+    }
+
+    /** Lift type declarations of symbol c:
+     *   - predicate types (t1 * ... * tn) > $o are lifted to (worldTy * t1 * ... * tn) > $o,
+     *     unless c is explicitly stated as rigid (default is flexible)
+     *   - function types (t1 * ... * tn) > t0 are lifted to ...
+     *     - (worldTy * t1 * ... * tn) > t0 if  c is a flexible symbol
+     *     - (t1 * ... * tn) > t0 (i.e., unchanged) if c is a rigid symbol
+     *     - The default rigidity is given by the user. The symbol-specific rigidity status
+     *       overrules the default rigidity.
+     * */
+    private[this] def convertTypeFormula(input: TFFAnnotated): TFFAnnotated = {
+      input.formula match {
+        case TFF.Typing(atom, typ) if input.role == "interpretation-type" =>
+          val escapedTyp = escapeType(typ)
+          rigidityMap = rigidityMap + (atom -> Rigid)
+          TFFAnnotated(input.name, "type", TFF.Typing(atom, escapedTyp), input.annotations)
+        case TFF.Typing(atom, typ) =>
+          val (argTypes, goalTy) = argumentTypesAndGoalTypeOfTFFType(typ)
+          val rigidity = getRigidityOfSymbol(atom, typ)
+          rigidityMap = rigidityMap + (atom -> rigidity) // add to table in case it was implicit (e.g. a predicate, or a default value)
+          val convertedType = rigidity match {
+            case Rigid => typ
+            case Flexible => TFF.MappingType(worldType +: argTypes, goalTy)
+          }
+          symbolsWithGoalType = symbolsWithGoalType + (goalTy -> (symbolsWithGoalType(goalTy) + (atom -> typ)))
+          TFFAnnotated(input.name, input.role, TFF.Typing(atom, convertedType), input.annotations)
+        case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
+      }
+    }
+
     /**
      * Replace TPTP interpreted types with non-interpreted types.
      * For now, just $world -> world type
@@ -171,31 +210,6 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         case _ => ty
       }
     }
-    /** Lift type declarations of symbol c:
-     *   - predicate types (t1 * ... * tn) > $o are lifted to (worldTy * t1 * ... * tn) > $o,
-     *     unless c is explicitly stated as rigid (default is flexible)
-     *   - function types (t1 * ... * tn) > t0 are lifted to ...
-     *     - (worldTy * t1 * ... * tn) > t0 if  c is a flexible symbol
-     *     - (t1 * ... * tn) > t0 (i.e., unchanged) if c is a rigid symbol
-     *     - The default rigidity is given by the user. The symbol-specific rigidity status
-     *       overrules the default rigidity.
-     * */
-    private[this] def convertTypeFormula(input: TFFAnnotated): TFFAnnotated = {
-      input.formula match {
-        case TFF.Typing(atom, typ) =>
-          val escapedTyp = escapeType(typ)
-          val (argTypes, goalTy) = argumentTypesAndGoalTypeOfTFFType(escapedTyp)
-          val rigidity = getRigidityOfSymbol(atom, escapedTyp)
-          rigidityMap = rigidityMap + (atom -> rigidity) // add to table in case it was implicit (e.g. a predicate, or a default value)
-          val convertedType = rigidity match { // //typ or escapedTyp -- should never make a difference
-            case Rigid => escapedTyp
-            case Flexible => TFF.MappingType(worldType +: argTypes, goalTy)
-          }
-          symbolsWithGoalType = symbolsWithGoalType + (goalTy -> (symbolsWithGoalType(goalTy) + (atom -> typ))) //typ or escapedTyp -- should never make a difference
-          TFFAnnotated(input.name, input.role, TFF.Typing(atom, convertedType), input.annotations)
-        case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
-      }
-    }
 
     private[this] def convertConjectureFormulasIntoOne(input: Seq[TFFAnnotated]): TFFAnnotated = {
       val (convertedConjectures, names) = input.map { annotated =>
@@ -209,15 +223,34 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       TFFAnnotated(names.mkString("+"), "conjecture", TFF.Logical(conjecturesAsOneFormula), None)
     }
 
+    /** Converts all annotated formula that are conjecture-like, axioms-like and interpretation-like
+     * (except interpretation-type, which is handled by [[convertTypeFormula]]. */
+    private[this] def convertAnnotatedFormula(input: TFFAnnotated): TFFAnnotated = {
+      import leo.modules.tptputils.toSimpleRole
+      input.formula match {
+        case TFF.Logical(formula) =>
+          val convertedFormula = toSimpleRole(input.role) match {
+            case "interpretation" => convertInterpretationFormula(formula)
+            case _ => convertAnnotatedFormula0(formula, input.role)
+          }
+          // Strip local, global etc. role contents from role (as classical ATPs cannot deal with it)
+          // And normalize hypothesis/interpretation to axiom.
+          val updatedRole = toSimpleRole(input.role) match {
+            case "hypothesis" => "axiom"
+            case "interpretation" => "axiom"
+            case r => r
+          }
+          TFFAnnotated(input.name, updatedRole, TFF.Logical(convertedFormula), input.annotations)
+        case _ => throw new EmbeddingException(s"Malformed annotated formula '${input.pretty}'.")
+      }
+    }
+
     private[this] def convertAnnotatedFormula0(formula: TFF.Formula, role: String): TFF.Formula = {
       import leo.modules.tptputils._
       var globalFormula = false
-      var interpretationFormula = false
       val worldPlaceholder = role match {
         case "hypothesis" | "conjecture" => // assumed to be local
           localWorldConstant
-        case x if x.startsWith("interpretation") => // no grounding, just use localWorldConstant as dummy
-          interpretationFormula = true; localWorldConstant
         case _ if isSimpleRole(role) => // everything else is assumed to be global
           globalFormula = true; localWorldVariable
         case _ => // role with subroles, check whether a subrole specified $local or $global explicitly
@@ -229,31 +262,14 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             case x => throw new EmbeddingException(s"Unknown subrole '$x' in conversion of formula '$name'. ")
           }
       }
-      val convertedFormula0: TFF.Formula = if (globalFormula) convertFormula(formula, worldPlaceholder, Set(localWorldVariableName)) else if (interpretationFormula) convertInterpretationFormula(formula) else convertFormula(formula, worldPlaceholder)
+      val convertedFormula0: TFF.Formula = if (globalFormula) convertFormula(formula, worldPlaceholder, Set(localWorldVariableName)) else convertFormula(formula, worldPlaceholder)
       // Ground, if necessary, with "global" quantification
       if (globalFormula) TFF.QuantifiedFormula(TFF.!, Seq((localWorldVariableName, Some(worldType))), convertedFormula0)
       else convertedFormula0
     }
 
-    private[this] def convertAnnotatedFormula(input: TFFAnnotated): TFFAnnotated = {
-      import leo.modules.tptputils._
-      input.formula match {
-        case TFF.Logical(formula) =>
-          val convertedFormula = convertAnnotatedFormula0(formula, input.role)
-          // Strip local, global etc. role contents from role (as classical ATPs cannot deal with it)
-          // And normalize hypothesis to axiom.
-          val updatedRole = toSimpleRole(input.role) match {
-            case "hypothesis" => "axiom"
-            case "interpretation" => "axiom"
-            case r => r
-          }
-          TFFAnnotated(input.name, updatedRole, TFF.Logical(convertedFormula), input.annotations)
-        case _ => throw new EmbeddingException(s"Malformed annotated formula '${input.pretty}'.")
-      }
-    }
-
-
-    // Interpretation formulas are interpreted specially (like hybrid logic, specifically on worlds).
+    // Interpretation formulas are interpreted specially (like hybrid logic formulas), i.e., wrt.
+    // some dedicated world.
     private[this] def convertInterpretationFormula(formula: TFF.Formula): TFF.Formula = {
       formula match {
         case TFF.AtomicFormula("$accessible_world", Seq(w, v)) => TFF.AtomicFormula(accessibilityRelationName, Seq(w, v))
@@ -418,7 +434,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       // "W0" -> "WW0"
       // "W" -> "WW"
       // "WWW" -> "WWWWWW"
-      val regex = s"^${localWorldVariableName}+\\d*"
+      val regex = s"^$localWorldVariableName+\\d*"
       if (variableName.matches(regex)) {
         variableName.replaceAll(s"$localWorldVariableName", s"$localWorldVariableName$localWorldVariableName")
       } else variableName

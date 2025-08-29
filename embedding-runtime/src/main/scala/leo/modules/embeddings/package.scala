@@ -480,7 +480,7 @@ package object embeddings {
     input.foreach {
       case f@TFFAnnotated(_, role, formula, _) => role match {
         case "logic" => logicSpec.append(f)
-        case "type" => formula match {
+        case "type" | "interpretation-type" => formula match {
           case TFF.Typing(_, typ) => typ match {
             case TFF.AtomicType("$tType", Seq()) => sortDecls.append(f)
             case _ => typeDecls.append(f)
