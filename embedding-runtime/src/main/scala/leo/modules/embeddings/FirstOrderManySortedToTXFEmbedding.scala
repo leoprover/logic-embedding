@@ -37,7 +37,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.7"
+  override final val version: String = "1.4.0"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
@@ -62,7 +62,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
 
     // Semantics dimensions
     // (1) Rigid or flexible symbols
-    private[this] var rigidityMap: Map[String, Rigidity] = Map.empty
+    private[this] var rigidityMap: Map[String, Rigidity] = Map.empty // Assumption: It contains EVERY symbol (at the latest, after convertTypeFormula)
     private[this] var rigidityDefaultExists: Boolean = false
     /* Initialize map */
     tptpDefinedPredicateSymbols.foreach { pred => rigidityMap += (pred -> Rigid) }
@@ -153,6 +153,12 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     private[this] var isS5 = false // True iff mono-modal and modality is S5
     private[this] var headless = true // True iff embedding is used for model verification only (i.e., modal logic parameters were not given in logic spec)
 
+    /**
+     * Replace TPTP interpreted types with non-interpreted types.
+     * For now, just $world -> world type
+     *
+     * $world should only occur in the input, if it describes an interpretation.
+     */
     private[this] def escapeType(ty: TFF.Type): TFF.Type = {
       ty match {
         case TFF.AtomicType("$world", Seq()) => worldType
@@ -165,16 +171,27 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         case _ => ty
       }
     }
+    /** Lift type declarations of symbol c:
+     *   - predicate types (t1 * ... * tn) > $o are lifted to (worldTy * t1 * ... * tn) > $o,
+     *     unless c is explicitly stated as rigid (default is flexible)
+     *   - function types (t1 * ... * tn) > t0 are lifted to ...
+     *     - (worldTy * t1 * ... * tn) > t0 if  c is a flexible symbol
+     *     - (t1 * ... * tn) > t0 (i.e., unchanged) if c is a rigid symbol
+     *     - The default rigidity is given by the user. The symbol-specific rigidity status
+     *       overrules the default rigidity.
+     * */
     private[this] def convertTypeFormula(input: TFFAnnotated): TFFAnnotated = {
       input.formula match {
         case TFF.Typing(atom, typ) =>
           val escapedTyp = escapeType(typ)
           val (argTypes, goalTy) = argumentTypesAndGoalTypeOfTFFType(escapedTyp)
-          val convertedType = goalTy match {
-            case o@TFF.AtomicType("$o", _) => TFF.MappingType(worldType +: argTypes, o)
-            case _ => escapedTyp
+          val rigidity = getRigidityOfSymbol(atom, escapedTyp)
+          rigidityMap = rigidityMap + (atom -> rigidity) // add to table in case it was implicit (e.g. a predicate, or a default value)
+          val convertedType = rigidity match { // //typ or escapedTyp -- should never make a difference
+            case Rigid => escapedTyp
+            case Flexible => TFF.MappingType(worldType +: argTypes, goalTy)
           }
-          symbolsWithGoalType = symbolsWithGoalType + (goalTy -> (symbolsWithGoalType(goalTy) + (atom -> typ)))
+          symbolsWithGoalType = symbolsWithGoalType + (goalTy -> (symbolsWithGoalType(goalTy) + (atom -> typ))) //typ or escapedTyp -- should never make a difference
           TFFAnnotated(input.name, input.role, TFF.Typing(atom, convertedType), input.annotations)
         case _ => throw new EmbeddingException(s"Malformed type definition in formula '${input.name}', aborting.")
       }
@@ -199,7 +216,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       val worldPlaceholder = role match {
         case "hypothesis" | "conjecture" => // assumed to be local
           localWorldConstant
-        case "interpretation" => // no grounding, just use localWorldConstant as dummy
+        case x if x.startsWith("interpretation") => // no grounding, just use localWorldConstant as dummy
           interpretationFormula = true; localWorldConstant
         case _ if isSimpleRole(role) => // everything else is assumed to be global
           globalFormula = true; localWorldVariable
@@ -272,7 +289,13 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       convertFormula(formula, worldPlaceholder, Set.empty)
     private[this] def convertFormula(formula: TFF.Formula, worldPlaceholder: TFF.Term, boundVars: Set[String]): TFF.Formula = {
       formula match {
-        case TFF.AtomicFormula(f, args) => if (f.startsWith("$") || f.startsWith("$$")) formula else TFF.AtomicFormula(f, worldPlaceholder +: args.map(convertTerm(_, worldPlaceholder, boundVars)))
+        case TFF.AtomicFormula(f, args) => if (f.startsWith("$") || f.startsWith("$$")) formula else {
+          val rigidity = rigidityMap(f)
+          rigidity match {
+            case Rigid => TFF.AtomicFormula(f, args.map(convertTerm(_, worldPlaceholder, boundVars)))
+            case Flexible => TFF.AtomicFormula(f, worldPlaceholder +: args.map(convertTerm(_, worldPlaceholder, boundVars)))
+          }
+        }
         case TFF.UnaryFormula(connective, body) => TFF.UnaryFormula(connective, convertFormula(body, worldPlaceholder, boundVars))
         case TFF.BinaryFormula(connective, left, right) => TFF.BinaryFormula(connective,
                                                                              convertFormula(left, worldPlaceholder, boundVars),
@@ -326,6 +349,30 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         }
         case TFF.FormulaVariable(_) => throw new UnsupportedFragmentException(s"Quantification over propositions not supported in first-order modal logic embedding but '${formula.pretty}' found. Use higher-order modal logic embedding instead (using parameter '-p FORCE_HIGHERORDER').")
         case TFF.Assignment(_, _) | TFF.MetaIdentity(_, _) => throw new EmbeddingException(s"Unexpected formula '${formula.pretty}' in embedding.")
+      }
+    }
+
+    /**
+     * Get the [[Rigidity]] of the symobl `name` of type `typ`.
+     *   - `name` is [[Flexible]] if it is a predicate symbol and not explicitly specified otherwise by the user
+     *     (Predicate symbols default to flexible, regardless of a default constant rigidity value),
+     *     or a function symbol (or any arity) and either specified
+     *     by the user to be [[Flexible]] or it defaults to [[Flexible]] (if a default rigidity is set by the user).
+     *   - `name` is [[Rigid]] if it is a predicate symbol and explicitly specified [[Rigid]] by the user
+     *     (with a per-name specification entry),
+     *     or a function symbol (or any arity) and either specified
+     *     by the user to be [[Rigid]] or it defaults to [[Rigid]] (if a default rigidity is set by the user).
+     */
+    private def getRigidityOfSymbol(name: String, typ: TFF.Type): Rigidity = {
+      if (headless) Flexible
+      else rigidityMap.get(name) match {
+        case Some(value) => value
+        case None =>
+          val (_, goal) = argumentTypesAndGoalTypeOfTFFType(typ)
+          goal match { // Special treatment for formulas/predicates: flexible by default
+            case TFF.AtomicType("$o", Seq()) => Flexible
+            case _ => if (rigidityDefaultExists) rigidityMap.default(name) else throw new EmbeddingException(s"Rigidity of symbol '$name' not defined and no default rigidity specified. Aborting.")
+          }
       }
     }
 
@@ -391,6 +438,12 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         /* special cases */
         case TFF.AtomicTerm("$local_world", Seq()) => localWorldConstant
         /* special cases END */
+        case TFF.AtomicTerm(f, args) =>
+          val rigidity = rigidityMap(f)
+          rigidity match {
+            case Rigid => TFF.AtomicTerm(f, args.map(convertTerm(_, worldPlaceholder, boundVars)))
+            case Flexible => TFF.AtomicTerm(f, worldPlaceholder +: args.map(convertTerm(_, worldPlaceholder, boundVars)))
+          }
         case TFF.FormulaTerm(formula) => TFF.FormulaTerm(convertFormula(formula, worldPlaceholder, boundVars))
         case TFF.Variable(name) => TFF.Variable(escapeTermVariable(name))
         case _ => term
