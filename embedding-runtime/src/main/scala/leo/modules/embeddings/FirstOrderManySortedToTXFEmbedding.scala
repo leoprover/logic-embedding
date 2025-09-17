@@ -157,10 +157,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     /** Only conversion needed: If sort formula was introduced as interpretation domain type, then
      * update role from "interpretation-type" to "type". */
     private[this] def convertSortFormula(input: TFFAnnotated): TFFAnnotated = {
-      input.role match {
-        case "interpretation-type" => TFFAnnotated(input.name, "type", input.formula, input.annotations)
-        case _ => input
-      }
+      import tptputils.toSimpleRole
+      TFFAnnotated(input.name, toSimpleRole(input.role), input.formula, input.annotations)
     }
 
     /** Lift type declarations of symbol c:
@@ -174,7 +172,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
      * */
     private[this] def convertTypeFormula(input: TFFAnnotated): TFFAnnotated = {
       input.formula match {
-        case TFF.Typing(atom, typ) if input.role == "interpretation-type" =>
+        case TFF.Typing(atom, typ) if input.role == "type-interpretation" =>
           val escapedTyp = escapeType(typ)
           rigidityMap = rigidityMap + (atom -> Rigid)
           TFFAnnotated(input.name, "type", TFF.Typing(atom, escapedTyp), input.annotations)
@@ -223,8 +221,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       TFFAnnotated(names.mkString("+"), "conjecture", TFF.Logical(conjecturesAsOneFormula), None)
     }
 
-    /** Converts all annotated formula that are conjecture-like, axioms-like and interpretation-like
-     * (except interpretation-type, which is handled by [[convertTypeFormula]]. */
+    /** Converts all annotated formula that are conjecture-like, axioms-like and interpretation-like */
     private[this] def convertAnnotatedFormula(input: TFFAnnotated): TFFAnnotated = {
       import leo.modules.tptputils.toSimpleRole
       input.formula match {

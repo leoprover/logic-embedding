@@ -470,6 +470,7 @@ package object embeddings {
   type TFFRemainingFormulas = TFFAnnotated
   protected[embeddings] final def splitTFFInputByDifferentKindOfFormulas(input: Seq[AnnotatedFormula]):
   (TFFLogicSpec, Seq[TFFSortDecl], Seq[TFFTypeDecl], Seq[TFFDefDecl], Seq[TFFRemainingFormulas]) = {
+    import tptputils.toSimpleRole
     import collection.mutable
     val logicSpec: mutable.Buffer[TFFLogicSpec] = mutable.Buffer.empty
     val sortDecls: mutable.Buffer[TFFSortDecl] = mutable.Buffer.empty
@@ -478,9 +479,9 @@ package object embeddings {
     val remainingFormulas: mutable.Buffer[TFFRemainingFormulas] = mutable.Buffer.empty
 
     input.foreach {
-      case f@TFFAnnotated(_, role, formula, _) => role match {
+      case f@TFFAnnotated(_, role, formula, _) => toSimpleRole(role) match {
         case "logic" => logicSpec.append(f)
-        case "type" | "interpretation-type" => formula match {
+        case "type" => formula match {
           case TFF.Typing(_, typ) => typ match {
             case TFF.AtomicType("$tType", Seq()) => sortDecls.append(f)
             case _ => typeDecls.append(f)
