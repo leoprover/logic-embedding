@@ -394,11 +394,11 @@ object DHOLEmbedding extends Embedding {
           } else {
             declTp
           }
-          val tpRelDecl = TPTP.THFAnnotated(typeRelName(symbol), "type",
+          val tpRelDecl = TPTP.THFAnnotated(unescapeTPTPName(typeRelName(symbol)), "type",
             TPTP.THF.Typing(typeRelName(symbol), relationType), annotations)
 
           val tpRelAx = if(isSimpleType(THF.FunctionTerm(symbol, Seq())))
-            TPTP.THFAnnotated(typeRelName(symbol) ++ "_is_eq", "axiom",
+            TPTP.THFAnnotated(unescapeTPTPName(typeRelName(symbol)) ++ "_is_eq", "axiom",
               THF.Logical(THF.QuantifiedFormula(THF.!, List(("X", THF.FunctionTerm(symbol, Seq())), ("Y", THF.FunctionTerm(symbol, Seq()))),
                 THF.BinaryFormula(THF.<=>,
                   THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, THF.FunctionTerm(typeRelName(symbol), Seq()), THF.Variable("X")), THF.Variable("Y")),
@@ -560,12 +560,12 @@ object DHOLEmbedding extends Embedding {
       }
     }
 
-    private def typeRelName(f:String): String = f+"Star"
-    private def typeRelSymName(f:String): String = typeRelName(f)+"_sym"
-    private def typeRelTransName(f:String): String = typeRelName(f)+"_trans"
-    private def typeRelReduceName(f:String): String = typeRelName(f)+"_reduce"
-    private def axName(f:String): String = f+"_tp_ax"
-    private def primedName(x: String) = x+"_prime"
+    private def typeRelName(f:String): String = s"'${unescapeTPTPName(f)}Star'"
+    private def typeRelSymName(f:String): String = s"${unescapeTPTPName(typeRelName(f))}_sym"
+    private def typeRelTransName(f:String): String = s"${unescapeTPTPName(typeRelName(f))}_trans"
+    private def typeRelReduceName(f:String): String = s"${unescapeTPTPName(typeRelName(f))}_reduce"
+    private def axName(f:String): String = unescapeTPTPName(f)+"_tp_ax"
+    private def primedName(x: String) = unescapeTPTPName(x)+"_prime"
     private def genPerType(a: THF.Type) = THF.BinaryFormula(THF.FunTyConstructor, a, (THF.BinaryFormula(THF.FunTyConstructor, a, bool)))
     private def isPerPred = THF.FunctionTerm("isPer", Seq())
 
