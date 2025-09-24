@@ -20,7 +20,7 @@ object DHOLEmbedding extends Embedding {
   override def name: String = "$$dhol"
 
   /** The version number of the embedding instance implementation. */
-  override def version: String = "1.2"
+  override def version: String = "1.2.1"
 
   /** The enumeration object of this embedding's parameter values. */
   override def embeddingParameter: DHOLEmbeddingParameter.type = DHOLEmbeddingParameter
@@ -146,10 +146,10 @@ object DHOLEmbedding extends Embedding {
           else {
             variableList match {
               case (tp@(tpName, THF.FunctionTerm("$tType", Seq())))+:shorterList =>
-                THF.QuantifiedFormula(quantifier, List(tp, (typeRelName(tpName), genPerType(THF.FunctionTerm(tpName, Seq())))),
+                THF.QuantifiedFormula(quantifier, List(tp, (variableStar(tpName), genPerType(THF.FunctionTerm(tpName, Seq())))),
                   THF.BinaryFormula(THF.Impl,
                     THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, isPerPred, THF.FunctionTerm(tpName, Seq())),
-                      THF.FunctionTerm(typeRelName(tpName), Seq())),
+                      THF.FunctionTerm(variableStar(tpName), Seq())),
                     convertFormula(THF.QuantifiedFormula(quantifier, shorterList, body), tp::variables)))
               case (tp@(_, THF.FunctionTerm("$o", Seq())))+:shorterList =>
                 THF.QuantifiedFormula(quantifier, List(tp),
@@ -264,11 +264,11 @@ object DHOLEmbedding extends Embedding {
         case THF.BinaryFormula(THF.FunTyConstructor, THF.FunctionTerm("$tType", Seq()), right) =>
           val newVarName = generateFreshTPTPVariableName("B", (typeVariableList++perVariableList++constants).map(x => x._1).toSet)
           val newVar = THF.FunctionTerm(newVarName, Seq())
-          val newVarPer = THF.FunctionTerm(typeRelName(newVarName), Seq())
-          THF.QuantifiedFormula(THF.!, Seq((newVarName, univTp), (typeRelName(newVarName), TTO(newVarName))),
+          val newVarPer = THF.FunctionTerm(variableStar(newVarName), Seq())
+          THF.QuantifiedFormula(THF.!, Seq((newVarName, univTp), (variableStar(newVarName), TTO(newVarName))),
             THF.BinaryFormula(THF.Impl, IsPerInstance(newVar, newVarPer),
               generateIsPerAxiom(base, right, typeVariableList++List((newVarName, univTp)),
-                perVariableList++List((newVarName, univTp), (typeRelName(newVarName), TTO(typeRelName(newVarName)))))))
+                perVariableList++List((newVarName, univTp), (variableStar(newVarName), TTO(variableStar(newVarName)))))))
         case THF.BinaryFormula(THF.FunTyConstructor, t, right) =>
           val newVarName = generateFreshTPTPVariableName("C", (typeVariableList++perVariableList++constants).map(x => x._1).toSet)
           val newVar = THF.FunctionTerm(newVarName, Seq())
@@ -276,7 +276,7 @@ object DHOLEmbedding extends Embedding {
             generateIsPerAxiom(base, right, typeVariableList, perVariableList++List((newVarName, univTp))))
         case THF.FunctionTerm("$tType", Seq()) =>
           IsPerInstance(THFApply(THF.FunctionTerm(base, Seq()), typeVariableList.map(x => THF.FunctionTerm(x._1, Seq()))),
-            THFApply(THF.FunctionTerm(typeRelName(base), Seq ()), perVariableList.map(x => THF.FunctionTerm(x._1, Seq()))))
+            THFApply(THF.FunctionTerm(variableStar(base), Seq ()), perVariableList.map(x => THF.FunctionTerm(x._1, Seq()))))
       }
     }
 
@@ -495,7 +495,7 @@ object DHOLEmbedding extends Embedding {
     private def typeRel(typ: THF.Formula, left: THF.Formula, right: THF.Formula, varList: List[THF.TypedVariable]): THF.Formula = {
       def relAppl(tp: THF.FunctionTerm, left: THF.Formula, right: THF.Formula) = tp match {
         case THF.FunctionTerm(f, args) =>
-          THFApply(atomicTerm(typeRelName(f)), args.map(x => convertFormula(x, varList)).appendedAll(Seq(left, right)))
+          THFApply(atomicTerm(variableStar(f)), args.map(x => convertFormula(x, varList)).appendedAll(Seq(left, right)))
       }
       def typeRelApp(tp: THF.Formula):THF.Formula = tp match {
         case THF.BinaryFormula(THF.App, f, arg) =>
@@ -506,9 +506,9 @@ object DHOLEmbedding extends Embedding {
           } else {
             THFApply(typeRelApp(f), List(convertFormula(arg, varList)))
           }
-        case THF.Variable(t) => atomicTerm(typeRelName(t))
+        case THF.Variable(t) => atomicTerm(variableStar(t))
         case THF.FunctionTerm("$o", Seq()) => THF.BinaryFormula(THF.Eq, left, right)
-        case THF.FunctionTerm(t, _) => atomicTerm(typeRelName(t))
+        case THF.FunctionTerm(t, _) => atomicTerm(variableStar(t))
         case default => tp
       }
 
@@ -545,10 +545,10 @@ object DHOLEmbedding extends Embedding {
           case (x,t@(THF.FunctionTerm("$tType", Seq())))+:variableList => //polymorphic extension
             val varName = generateFreshTPTPVariableName("E", ((varList++vl).map({v => v._1})).toSet)
             val xType = THF.FunctionTerm(x, Seq())
-            val xStarType = THF.FunctionTerm(typeRelName(x), Seq())
+            val xStarType = THF.FunctionTerm(variableStar(x), Seq())
             val codomain = THF.QuantifiedFormula(THF.!>, variableList, body)
             val newBody = THF.BinaryFormula(THF.Impl, THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, isPerPred, xType), xStarType), typeRel(codomain, left, right, varList))
-            THF.QuantifiedFormula(THF.!, Seq((x,t),(typeRelName(x), genPerType(xType))), newBody)
+            THF.QuantifiedFormula(THF.!, Seq((x,t),(variableStar(x), genPerType(xType))), newBody)
           case (x,tp)+:variableList => 
             val codomain = THF.QuantifiedFormula(THF.!>, variableList, body)
             typeRelFuncType(x, tp, codomain)
@@ -560,6 +560,7 @@ object DHOLEmbedding extends Embedding {
       }
     }
 
+    private def variableStar(vari: String): String = s"${vari}Star"
     private def typeRelName(f:String): String = s"'${unescapeTPTPName(f)}Star'"
     private def typeRelSymName(f:String): String = s"${unescapeTPTPName(typeRelName(f))}_sym"
     private def typeRelTransName(f:String): String = s"${unescapeTPTPName(typeRelName(f))}_trans"
