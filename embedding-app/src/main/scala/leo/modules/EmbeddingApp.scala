@@ -11,7 +11,7 @@ import scala.collection.mutable
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
-  final val version: String = "1.9.1"
+  final val version: String = "1.9.2"
 
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None

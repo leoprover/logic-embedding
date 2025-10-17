@@ -20,7 +20,7 @@ object DHOLEmbedding extends Embedding {
   override def name: String = "$$dhol"
 
   /** The version number of the embedding instance implementation. */
-  override def version: String = "1.2.1"
+  override def version: String = "1.2.2"
 
   /** The enumeration object of this embedding's parameter values. */
   override def embeddingParameter: DHOLEmbeddingParameter.type = DHOLEmbeddingParameter
