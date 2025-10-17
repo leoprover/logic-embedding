@@ -155,25 +155,31 @@ object DHOLEmbedding extends Embedding {
                 THF.QuantifiedFormula(quantifier, List(tp),
                   convertFormula(THF.QuantifiedFormula(quantifier, shorterList, body), tp::variables))
               case Nil => convertFormula(body, variables)
-              case (tpvarname, tpname)+:shorterList =>
-                val convertedVariableList = variableList map {
-                  case (str, tp) => (str, normalizeNestedPi(convertType(tp, variables)))
-                }
+              case (fst@(tpvarname, tpname))+:shorterList =>
+                if (onlyBooleans(tpname)) // Here we are only checking for booleans. It's probable that this simplification would work for any
+                                          // non-dependent base type which would present optimization potential. But I have not formally investigated that.
+                  THF.QuantifiedFormula(quantifier, List(fst),
+                    convertFormula(THF.QuantifiedFormula(quantifier, shorterList, body), fst::variables))
+                else {
+                  val convertedVariableList = variableList map {
+                    case (str, tp) => (str, normalizeNestedPi(convertType(tp, variables)))
+                  }
 
-                val convertedBody = convertFormula(body, variableList.toList++variables)
+                  val convertedBody = convertFormula(body, variableList.toList++variables)
 
-                def relativizeVar(connective: THF.BinaryConnective)(v: (String, THF.Type), body: THF.Formula) = v match {
-                  case (str, tp@THF.FunctionTerm(n, _)) =>
-                    body
-                  case (str, tp) =>
-                    THF.BinaryFormula(connective, typePred(tp, THF.Variable(str), variables), body)
-                }
+                  def relativizeVar(connective: THF.BinaryConnective)(v: (String, THF.Type), body: THF.Formula) = v match {
+                    case (str, tp@THF.FunctionTerm(n, _)) =>
+                      body
+                    case (str, tp) =>
+                      THF.BinaryFormula(connective, typePred(tp, THF.Variable(str), variables), body)
+                  }
 
-                def relativizedBody(connective: THF.BinaryConnective) = variableList.foldRight(convertedBody)(relativizeVar(connective))
-                quantifier match {
-                  case THF.! => THF.QuantifiedFormula(THF.!, convertedVariableList, relativizedBody(THF.Impl))
-                  case THF.? => THF.QuantifiedFormula(THF.?, convertedVariableList, relativizedBody(THF.&))
-                  case _ => THF.QuantifiedFormula(quantifier, convertedVariableList, convertedBody)
+                  def relativizedBody(connective: THF.BinaryConnective) = variableList.foldRight(convertedBody)(relativizeVar(connective))
+                  quantifier match {
+                    case THF.! => THF.QuantifiedFormula(THF.!, convertedVariableList, relativizedBody(THF.Impl))
+                    case THF.? => THF.QuantifiedFormula(THF.?, convertedVariableList, relativizedBody(THF.&))
+                    case _ => THF.QuantifiedFormula(quantifier, convertedVariableList, convertedBody)
+                  }
                 }
             }
           }
@@ -573,6 +579,20 @@ object DHOLEmbedding extends Embedding {
   }
 
   /**
+    * Check if all types appearing in a type are Booleans.
+    * This is only used in formulas, so there should not be any quantified types apearing (i hope)
+    * @param tp The type to check
+    * @result True iff only booleans appear as base types, otherwise false
+    */
+  private def onlyBooleans(tp: THF.Type) : Boolean = tp match {
+    case THF.FunctionTerm("$o", Seq()) => true
+    case THF.BinaryFormula(_, left, right) => onlyBooleans(left) && onlyBooleans(right)
+    case THF.QuantifiedFormula(_, vl, body) => false
+      // Note that in general, one could find a boolean function of form '!>[A:$o]: $o' so there is optimization potential here
+    case _ => false
+  }
+
+  /**
     * Check if the argument is syntactically simple, i.e. no term dependence
     * Note that this does not check wether the argument of a Pi type occurs somewhere
     * i.e. a function type Pi x:A.B where B does not depend on A is not recognized as simple
@@ -705,6 +725,8 @@ object DHOLEmbeddingUtils {
       .getOrElse(throw new EmbeddingException(s"Failed to look up variable or constant: "+name))._2
     def unsupportedFormula(): THF.Formula = throw new EmbeddingException(s"Not allowed on term level: "+formula.pretty)
     formula match {
+      case THF.FunctionTerm("$true", _) => bool
+      case THF.FunctionTerm("$false", _) => bool
       case THF.FunctionTerm(f, Nil) => lookupAtomic(f)
       case THF.FunctionTerm(f, args) =>
         applyNTp(inferType(variables, constants)(atomicTerm(f)), args)
