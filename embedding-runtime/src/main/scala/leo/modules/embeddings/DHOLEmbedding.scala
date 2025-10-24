@@ -20,7 +20,7 @@ object DHOLEmbedding extends Embedding {
   override def name: String = "$$dhol"
 
   /** The version number of the embedding instance implementation. */
-  override def version: String = "1.2.2"
+  override def version: String = "1.2.3"
 
   /** The enumeration object of this embedding's parameter values. */
   override def embeddingParameter: DHOLEmbeddingParameter.type = DHOLEmbeddingParameter
@@ -156,9 +156,8 @@ object DHOLEmbedding extends Embedding {
                   convertFormula(THF.QuantifiedFormula(quantifier, shorterList, body), tp::variables))
               case Nil => convertFormula(body, variables)
               case (fst@(tpvarname, tpname))+:shorterList =>
-                if (onlyBooleans(tpname)) // Here we are only checking for booleans. It's probable that this simplification would work for any
-                                          // non-dependent base type which would present optimization potential. But I have not formally investigated that.
-                  THF.QuantifiedFormula(quantifier, List(fst),
+                if (isSimpleType(tpname))
+                  return THF.QuantifiedFormula(quantifier, List(fst),
                     convertFormula(THF.QuantifiedFormula(quantifier, shorterList, body), fst::variables))
                 else {
                   val convertedVariableList = variableList map {
@@ -577,21 +576,7 @@ object DHOLEmbedding extends Embedding {
     private def isPerPred = THF.FunctionTerm("isPer", Seq())
 
   }
-
-  /**
-    * Check if all types appearing in a type are Booleans.
-    * This is only used in formulas, so there should not be any quantified types apearing (i hope)
-    * @param tp The type to check
-    * @result True iff only booleans appear as base types, otherwise false
-    */
-  private def onlyBooleans(tp: THF.Type) : Boolean = tp match {
-    case THF.FunctionTerm("$o", Seq()) => true
-    case THF.BinaryFormula(_, left, right) => onlyBooleans(left) && onlyBooleans(right)
-    case THF.QuantifiedFormula(_, vl, body) => false
-      // Note that in general, one could find a boolean function of form '!>[A:$o]: $o' so there is optimization potential here
-    case _ => false
-  }
-
+  
   /**
     * Check if the argument is syntactically simple, i.e. no term dependence
     * Note that this does not check wether the argument of a Pi type occurs somewhere
@@ -600,7 +585,7 @@ object DHOLEmbedding extends Embedding {
     * @result A boolean that is false if the provided type is non-simple
     */
   private def isSimpleType(tp: THF.Type) : Boolean = tp match {
-    case THF.FunctionTerm("$o", Seq()) => true
+    case THF.FunctionTerm(ty, Seq()) if List("$o", "$oType", "$i", "$iType", "$real", "$rat", "$int").contains(ty) => true
     case THF.FunctionTerm(n, Seq()) => simpleTypes.exists(_ == tp)
     case THF.BinaryFormula(THF.FunTyConstructor, left, right) =>
       isSimpleType(left) && isSimpleType(right)
