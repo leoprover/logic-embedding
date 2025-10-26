@@ -1,6 +1,6 @@
 lazy val commonSettings = Seq(
   organization := "org.leo",
-  version := "1.9.3",
+  version := "1.9.4",
   scalaVersion := "2.13.17",
   scalacOptions ++= Seq(
       "-deprecation",
