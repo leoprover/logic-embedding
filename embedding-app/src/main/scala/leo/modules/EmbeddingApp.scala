@@ -129,6 +129,7 @@ object EmbeddingApp {
           error = Some("SyntaxError", s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
         case e: Throwable =>
           error = Some("Error", s"Unexpected error: ${e.getMessage}. This is considered an implementation error, please report this!")
+          System.err.println(s"Exception: ${e.toString}")
           e.printStackTrace()
       } finally {
         if (error.nonEmpty) {
