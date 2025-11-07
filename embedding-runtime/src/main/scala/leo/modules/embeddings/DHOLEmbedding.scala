@@ -584,7 +584,6 @@ object DHOLEmbedding extends Embedding {
     * Note that this does not check wether the argument of a Pi type occurs somewhere
     * i.e. a function type Pi x:A.B where B does not depend on A is not recognized as simple
     * @param tp The type to check
-    * @param includePoly Toggle if type variables are interpreted in a way to include dependent types (default = true)
     * @result A boolean that is false if the provided type is non-simple
     */
   private def isSimpleType(tp: THF.Type) : Boolean = tp match {
