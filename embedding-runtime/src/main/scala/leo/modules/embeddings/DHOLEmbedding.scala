@@ -10,7 +10,8 @@ import scala.annotation.tailrec
 object DHOLEmbedding extends Embedding {
   import DHOLEmbeddingUtils._
   var constants : List[(String, TPTP.THF.Type)] = Nil
-  var simpleTypes : List[THF.Type] = Nil
+  var depTypedTerms : List[THF.Formula] = Nil
+  var dependentPoly : Boolean = false
 
   object DHOLEmbeddingParameter extends Enumeration { }
   /** The type of parameter options provided by the embedding instance. */
@@ -20,7 +21,7 @@ object DHOLEmbedding extends Embedding {
   override def name: String = "$$dhol"
 
   /** The version number of the embedding instance implementation. */
-  override def version: String = "1.2.3"
+  override def version: String = "1.3.0"
 
   /** The enumeration object of this embedding's parameter values. */
   override def embeddingParameter: DHOLEmbeddingParameter.type = DHOLEmbeddingParameter
@@ -49,6 +50,12 @@ object DHOLEmbedding extends Embedding {
 
       val (typeFormulas, nonTypeFormulas) = properFormulas.partition(_.role == "type")
       val (definitionFormulas, otherFormulas) = nonTypeFormulas.partition(_.role == "definition")
+      dependentPoly = false
+      val isDependentlyTyped = typeFormulas.flatMap(convertTypeFormula)  // check first if there even are any dependent types - if not we can just return the original problem
+      if (depTypedTerms.isEmpty)
+        return TPTP.Problem(problem.includes, problem.formulas.tail, Map.empty)
+      dependentPoly = true                                               // if yes, treat typevariables as dependently typed and translate type formulas under that point of view
+      depTypedTerms = Nil
       val convertedTypeFormulas = typeFormulas.flatMap(convertTypeFormula)
       val convertedDefinitionFormulas = definitionFormulas.map(convertDefinitionFormula)
       val convertedOtherFormulas = otherFormulas.map(convertAnnotatedFormula)
@@ -151,10 +158,6 @@ object DHOLEmbedding extends Embedding {
                     THF.BinaryFormula(THF.App, THF.BinaryFormula(THF.App, isPerPred, THF.FunctionTerm(tpName, Seq())),
                       THF.FunctionTerm(variableStar(tpName), Seq())),
                     convertFormula(THF.QuantifiedFormula(quantifier, shorterList, body), tp::variables)))
-              case (tp@(_, THF.FunctionTerm("$o", Seq())))+:shorterList =>
-                THF.QuantifiedFormula(quantifier, List(tp),
-                  convertFormula(THF.QuantifiedFormula(quantifier, shorterList, body), tp::variables))
-              case Nil => convertFormula(body, variables)
               case (fst@(tpvarname, tpname))+:shorterList =>
                 if (isSimpleType(tpname))
                   return THF.QuantifiedFormula(quantifier, List(fst),
@@ -180,6 +183,10 @@ object DHOLEmbedding extends Embedding {
                     case _ => THF.QuantifiedFormula(quantifier, convertedVariableList, convertedBody)
                   }
                 }
+              case (tp@(_, THF.FunctionTerm("$o", Seq())))+:shorterList =>
+                THF.QuantifiedFormula(quantifier, List(tp),
+                  convertFormula(THF.QuantifiedFormula(quantifier, shorterList, body), tp::variables))
+              case Nil => convertFormula(body, variables)
             }
           }
 
@@ -353,16 +360,8 @@ object DHOLEmbedding extends Embedding {
         // Normalize nested pi-types to simplify the subsequent logic
         case TPTP.THFAnnotated(n, "type", THF.Typing(s,THF.QuantifiedFormula(THF.!>, vl, THF.QuantifiedFormula(THF.!>, vl2, bdy))), an) =>
           convertTypeFormula(TPTP.THFAnnotated(n, "type", THF.Typing(s,THF.QuantifiedFormula(THF.!>, vl++vl2, bdy)), an))
-        case TPTP.THFAnnotated(name, "type", TPTP.THF.Typing(symbol, typ), annotations) => typ match {
-          case THF.QuantifiedFormula(THF.!>, _, _) =>
-            convertTypeFormulaAux(formula)
-          case THF.BinaryFormula(THF.FunTyConstructor, _, _) if (goalType(typ) == univTp) =>
-            convertTypeFormulaAux(formula)
-          case _ =>
-            if (typ == univTp)
-              simpleTypes +:= THF.FunctionTerm(symbol, Seq())
-            convertTypeFormulaAux(formula)
-        }
+        case TPTP.THFAnnotated(name, "type", TPTP.THF.Typing(symbol, typ), annotations) =>
+          convertTypeFormulaAux(formula)
         case TPTP.THFAnnotated(_, _, _, _) => throw new EmbeddingException(s"Unexpected error: Type conversion called on non-type-statement.")
         case _ => throw new EmbeddingException(s"Only embedding of THF files supported.")
       }
@@ -415,10 +414,13 @@ object DHOLEmbedding extends Embedding {
         }
         val type_pred = typ match {
           // A generic type declaration
-          case f@THF.QuantifiedFormula(THF.!>, variableList, _) if isTypeDecl(f) =>
-            typeRelDecls(variableList, convertPi(f))
-          case f@(THF.BinaryFormula(THF.FunTyConstructor, _, _)) if goalType(f) == univTp =>
-            typeRelDecls(Nil, f)
+          case THF.QuantifiedFormula(THF.!>, variableList, _) if isTypeDecl(typ) =>
+            depTypedTerms +:= THF.FunctionTerm(symbol, Seq())
+            typeRelDecls(variableList, convertPi(typ))
+          case (THF.BinaryFormula(THF.FunTyConstructor, _, _)) if isTypeDecl(typ) =>
+            if (!isSimpleType(typ))
+              depTypedTerms +:= THF.FunctionTerm(symbol, Seq())
+            typeRelDecls(Nil, typ)
           // special case of a type declaration with no arguments
           case f@THF.FunctionTerm("$tType", Seq())  => typeRelDecls(Nil, f) 
             // This is a term declaration
@@ -491,7 +493,7 @@ object DHOLEmbedding extends Embedding {
       }
     }
     /**
-     * Generates the typing condition, expands typing relations over Pi-types
+     * Generates the typing condition, expands typing reltions over Pi-types
      * @param typ the type of the typing relation
      * @param left the term on the left of the typing relation
      * @param right the term on the right of the typing relation
@@ -507,7 +509,7 @@ object DHOLEmbedding extends Embedding {
           var inferredType: THF.Type = THF.FunctionTerm("",Seq())
           inferredType = inferType(varList, constants)(arg)
           if (inferredType == univTp) {
-            THFApply(typeRelApp(f), Seq(convertType(arg:THF.Type, varList),typeRelApp(arg:THF.Type)))
+            THFApply(typeRelApp(f), Seq(convertType(arg:THF.Type, varList), typeRelApp(arg:THF.Type)))
           } else {
             THFApply(typeRelApp(f), List(convertFormula(arg, varList)))
           }
@@ -585,12 +587,20 @@ object DHOLEmbedding extends Embedding {
     * @result A boolean that is false if the provided type is non-simple
     */
   private def isSimpleType(tp: THF.Type) : Boolean = tp match {
+    case THF.FunctionTerm(ty, Seq()) if (!dependentPoly && ty == "$tType") => true
     case THF.FunctionTerm(ty, Seq()) if List("$o", "$oType", "$i", "$iType", "$real", "$rat", "$int").contains(ty) => true
-    case THF.FunctionTerm(n, Seq()) => simpleTypes.exists(_ == tp)
+    case THF.FunctionTerm(n, Seq()) => !(depTypedTerms.contains(tp)) //checks if a type was previously parsed as dependent - this depends on whether dependentPoly is true or not
+    case THF.Variable(_) => true
+    case THF.BinaryFormula(THF.FunTyConstructor, left, right) if (!dependentPoly && left == univTp && right == univTp) => true // type vars need to be at the head, so this constellation forbids term arguments
+    case THF.BinaryFormula(THF.FunTyConstructor, _, right) if right == univTp => false
     case THF.BinaryFormula(THF.FunTyConstructor, left, right) =>
+      (isSimpleType(left) && isSimpleType(right))
+    case THF.BinaryFormula(THF.App, left, right) =>
       isSimpleType(left) && isSimpleType(right)
-    case _ =>
-      false
+    case THF.QuantifiedFormula(THF.!>, (_, THF.FunctionTerm("$tType", Seq()))+:varlist, body) if !dependentPoly =>
+      isSimpleType(THF.QuantifiedFormula(THF.!>, varlist, body))
+    case THF.QuantifiedFormula(THF.!>, Nil, body) => isSimpleType(body)
+    case _ => false
   }
 }
 
@@ -652,12 +662,7 @@ object DHOLEmbeddingUtils {
     * @param f The formula to check
     * @return A boolean that is true iff the formula is a type declaration
     */
-  private[embeddings] def isTypeDecl(f: THF.Formula):Boolean = f match {
-    case THF.QuantifiedFormula(THF.!>, _, body) => isTypeDecl(body)
-    case THF.BinaryFormula(THF.FunTyConstructor, _, right) => isTypeDecl(right)
-    case THF.FunctionTerm("$tType", _) => true
-    case _ => false
-  }
+  private[embeddings] def isTypeDecl(f: THF.Formula):Boolean = goalType(f) == univTp
 
   /** The application of function func to the arguments args */
   private[embeddings] def THFApply(func: THF.Formula, args: Seq[THF.Formula]): THF.Formula =
