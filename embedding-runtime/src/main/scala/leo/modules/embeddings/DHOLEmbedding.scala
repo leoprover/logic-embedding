@@ -6,7 +6,7 @@ import leo.datastructures.TPTP.THF.FunctionTerm
 
 import scala.annotation.tailrec
 
-/** @author Colin Rothgang, Daniel Renalter */
+/** @author Colin Rothgang, Rhea Ranalter */
 object DHOLEmbedding extends Embedding {
   import DHOLEmbeddingUtils._
   var constants : List[(String, TPTP.THF.Type)] = Nil
@@ -169,7 +169,7 @@ object DHOLEmbedding extends Embedding {
 
                   val convertedBody = convertFormula(body, variableList.toList++variables)
 
-                  def relativizeVar(connective: THF.BinaryConnective)(v: (String, THF.Type), body: THF.Formula) = v match {
+                  def relativizeVar(connective: THF.BinaryConnective)(v: THF.TypedVariable, body: THF.Formula) = v match {
                     case (str, tp@THF.FunctionTerm(n, _)) =>
                       body
                     case (str, tp) =>
@@ -201,7 +201,7 @@ object DHOLEmbedding extends Embedding {
       * @return simply typed analogue to the argument
       */
     private def convertPi(tp: THF.Type): THF.Type = {
-      def innerConvertPi(variableList: Seq[(String, THF.Type)], ret: THF.Type): THF.Type = variableList match {
+      def innerConvertPi(variableList: Seq[THF.TypedVariable], ret: THF.Type): THF.Type = variableList match {
         case (_, tp)+:shorterList =>
           val body = THF.QuantifiedFormula(THF.!>, shorterList, ret)
           FuncType(tp, innerConvertPi(shorterList, ret))
@@ -382,7 +382,7 @@ object DHOLEmbedding extends Embedding {
         val convertedType = normalizeNestedPi(convertType(typ, variables))
         var declType: THF.Type = convertedType
         val base = atomicTerm(symbol)
-        def typeRelDecls(variableList: Seq[(String, THF.Type)], typetype: THF.Type): List[TPTP.THFAnnotated] = {
+        def typeRelDecls(variableList: Seq[THF.TypedVariable], typetype: THF.Type): List[TPTP.THFAnnotated] = {
           val vars = generatePolyVariables(typetype, variables)
           variables = vars++variables
           val preDeclTp = if (vars == Nil) {
@@ -674,8 +674,9 @@ object DHOLEmbeddingUtils {
    * @param replArgs the terms to substitute for the free variables
    * @return
    */
-  private[embeddings] def substituteVars(body: THF.Formula)(implicit variableList: Seq[(String, THF.Type)], replArgs: Seq[THF.Formula]): THF.Formula = {
-    val varargs = variableList.take(replArgs.length).zip(replArgs)
+  private[embeddings] def substituteVars(body: THF.Formula)(implicit variableList: Seq[THF.TypedVariable], replArgs: Seq[THF.Formula]): (THF.Formula, Seq[THF.TypedVariable]) = {
+    val (newBody,newVarList) = replArgs.foldLeft((body, variableList))(avoidCapture)
+    val varargs = newVarList.take(replArgs.length).zip(replArgs)
     def substituteAtomic(name: String, default: THF.Formula) = {
       varargs.find(_._1._1 == name).map(_._2).getOrElse(default)
     }
@@ -683,14 +684,50 @@ object DHOLEmbeddingUtils {
       case v@THF.Variable(name) => substituteAtomic(name, v)
       case FunctionTerm(f, args) =>
         THFApply(substituteAtomic(f, FunctionTerm(f, Nil)), args.map(substituteSubterm).toList)
-      case THF.QuantifiedFormula(quantifier, variableList, body) => THF.QuantifiedFormula(quantifier, variableList, substituteSubterm(body))
-      case THF.UnaryFormula(connective, body) => THF.UnaryFormula(connective, substituteSubterm(body))
+      case THF.QuantifiedFormula(quantifier, innerList, innerBody) => THF.QuantifiedFormula(quantifier, innerList, substituteSubterm(innerBody))
+      case THF.UnaryFormula(connective, innerBody) => THF.UnaryFormula(connective, substituteSubterm(innerBody))
       case THF.BinaryFormula(connective, left, right) => THF.BinaryFormula(connective, substituteSubterm(left), substituteSubterm(right))
       case THF.Tuple(elements) => THF.Tuple(elements.map(substituteSubterm))
       case THF.ConditionalTerm(condition, thn, els) => THF.ConditionalTerm(substituteSubterm(condition), substituteSubterm(thn), substituteSubterm(els))
       case default => default
     }
-    substituteSubterm(body)
+    return (substituteSubterm(newBody), newVarList)
+  }
+
+  private[embeddings] def avoidCapture(base: (THF.Formula, Seq[(String, THF.Type)]), replacement: THF.Formula): (THF.Formula, Seq[(String, THF.Type)]) = {
+    val foundList = base._2.filter(x => appears(replacement, x._1))
+    val newVarList = foundList.foldLeft(base._2)((tv, oldName) => renameVarInList(tv, oldName._1, oldName._1+"'"))
+    val newBody = foundList.foldLeft(base._1)((f, oldName) => renameVar(f, oldName._1, oldName._1+"'"))
+    return (newBody, newVarList)
+  }
+
+  private[embeddings] def renameVarInList(list: Seq[THF.TypedVariable], oldVarName: String, newVarName: String): Seq[THF.TypedVariable] = list match {
+    case (name, tp)+:shorterList if name == oldVarName => (newVarName, tp)+:(renameVarInList(shorterList, oldVarName, newVarName))
+    case tv+:shorterList => tv+:(renameVarInList(shorterList, oldVarName, newVarName))
+    case Nil => Nil
+  }
+
+  private[embeddings] def renameVar(formula: THF.Formula, oldVarName: String, newVarName: String): THF.Formula = formula match {
+    case THF.BinaryFormula(c, left, right) => THF.BinaryFormula(c, renameVar(left, oldVarName, newVarName), renameVar(right, oldVarName, newVarName))
+    case THF.UnaryFormula(c, f) => THF.UnaryFormula(c, renameVar(f, oldVarName, newVarName))
+    case f@THF.QuantifiedFormula(_, varList, _) if varList.map(_._1).contains(oldVarName) => f
+    case THF.QuantifiedFormula(c, vs, body) => THF.QuantifiedFormula(c, vs, renameVar(body, oldVarName, newVarName))
+    case THF.Variable(name) if name == oldVarName => THF.Variable(newVarName)
+    case THF.Variable(name) => THF.Variable(name)
+    case f@THF.FunctionTerm(_, _) => f
+    case default => throw new EmbeddingException(s"renameVar in unsupportet formula: "+formula.pretty)
+  }
+
+  private[embeddings] def appears(formula: THF.Formula, variableName: String): Boolean = formula match {
+    case THF.BinaryFormula(_, left, right) => appears(left, variableName) | appears(right, variableName)
+    case THF.UnaryFormula(_, f) => appears(f, variableName)
+    case THF.QuantifiedFormula(_, varList, _) if varList.map(_._1).contains(variableName) => false
+    case THF.QuantifiedFormula(_, _, body) => appears(body, variableName)
+    case THF.Variable(name) if name == variableName => true
+    case THF.Variable(_) => false
+    case THF.FunctionTerm(name, _) if name == variableName => true
+    case THF.FunctionTerm(_, _) => false
+    case default => throw new EmbeddingException(s"appears check in unsupportet formula: "+formula.pretty)
   }
 
   /**
@@ -700,15 +737,15 @@ object DHOLEmbeddingUtils {
    * @param constants the constants
    * @return
    */
-  private[embeddings] def inferType(variables: List[(String, TPTP.THF.Type)], constants: List[(String, TPTP.THF.Type)])(formula: TPTP.THF.Formula): TPTP.THF.Formula = {
+  private[embeddings] def inferType(variables: List[THF.TypedVariable], constants: List[(String, TPTP.THF.Type)])(formula: TPTP.THF.Formula): TPTP.THF.Formula = {
     @tailrec
     def applyNTp(tp: THF.Formula, args: Seq[THF.Formula]): THF.Formula = tp match {
       case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) if args.length == 1 => codomain
       case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) => applyNTp(codomain, args.tail)
       case THF.QuantifiedFormula(THF.!>, variableList, body) =>
-        val substBody = substituteVars(body)(variableList, args)
+        val (substBody, newVariableList) = substituteVars(body)(variableList, args)
         if (variableList.length == args.length) { substBody } else {
-          THF.QuantifiedFormula(THF.!>, variableList.drop(args.length), substBody)
+          THF.QuantifiedFormula(THF.!>, newVariableList.drop(args.length), substBody)
         }
     }
     def lookupAtomic(name: String) = (constants++variables).find(_._1 == name)

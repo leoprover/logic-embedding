@@ -6,7 +6,7 @@ import TPTP.THF
 import scala.annotation.tailrec
 
 /**
- * @author Daniel Renalter, 2025
+ * @author Rhea Ranalter, 2025/26
  */
 object DHOLTCC extends EmbeddingN {
   import DHOLEmbeddingUtils._
@@ -85,11 +85,11 @@ object DHOLTCC extends EmbeddingN {
 
       val constants = typeFormulas map {case TPTP.THFAnnotated(_, _, THF.Typing(n, t), _) => (n, t)}
 //      println("in typecheck conjecture") //DEBUG
-      val obligations = checkType(List[(String, THF.Type)](), constants.toList, List[THF.Formula]())(conjecture, bool).filter(x => x.exists(y => y.role == "conjecture"))
+      val obligations = checkType(List[THF.TypedVariable](), constants.toList, List[THF.Formula]())(conjecture, bool).filter(x => x.exists(y => y.role == "conjecture"))
       obligations.map(x => TPTP.Problem(problem.includes, contextFormulas.toList ++ x, Map.empty))
     }
 
-    private def genObligationFormula(variables: List[(String, THF.Type)], constants: List[(String, THF.Type)], context: List[THF.Formula])(a: THF.Type, b:THF.Type): List[TPTP.THFAnnotated] = {
+    private def genObligationFormula(variables: List[THF.TypedVariable], constants: List[(String, THF.Type)], context: List[THF.Formula])(a: THF.Type, b:THF.Type): List[TPTP.THFAnnotated] = {
       val conj:THF.Formula = THF.BinaryFormula(THF.Eq, a, b)
       val usedVars = (context++List(conj)).flatMap(y => (variables.filter(x => occurs(y, x._1)))).distinct
       var witnesses = usedVars
@@ -112,7 +112,7 @@ object DHOLTCC extends EmbeddingN {
       return newFormulas
     }
 
-    private def genObligation(variables: List[(String, THF.Type)], constants: List[(String, THF.Type)], context: List[THF.Formula])(a: THF.Type, b:THF.Type): List[List[TPTP.THFAnnotated]] = (a, b) match {
+    private def genObligation(variables: List[THF.TypedVariable], constants: List[(String, THF.Type)], context: List[THF.Formula])(a: THF.Type, b:THF.Type): List[List[TPTP.THFAnnotated]] = (a, b) match {
       case (a, b) if (a == b) => Nil
       case (THF.QuantifiedFormula(THF.!>, ahead::avl, af), THF.QuantifiedFormula(THF.!>, bhead::bvl, bf)) =>
         genObligation(variables, constants, context)(ahead._2, bhead._2) ++
@@ -138,7 +138,7 @@ object DHOLTCC extends EmbeddingN {
     }
 
     //Check simply typed skeleton
-    private def checkType(variables: List[(String, THF.Type)], constants: List[(String, THF.Type)], context: List[THF.Formula])(formula: THF.Formula, targetType: THF.Type): List[List[TPTP.THFAnnotated]] = {
+    private def checkType(variables: List[THF.TypedVariable], constants: List[(String, THF.Type)], context: List[THF.Formula])(formula: THF.Formula, targetType: THF.Type): List[List[TPTP.THFAnnotated]] = {
       def getArgTypes(formula: THF.Formula): List[THF.Type] = formula match {
         case THF.BinaryFormula(THF.FunTyConstructor, a, b) => a :: getArgTypes(b)
         case THF.QuantifiedFormula(THF.!>, Nil, f) => getArgTypes(f)
@@ -147,7 +147,7 @@ object DHOLTCC extends EmbeddingN {
         case _ => Nil
       }
       // DEBUG
-      /*
+/*
       println("-----------------")
       println("using variables: ")
       variables map (x => println(" - " + x._1 + ":" + x._2.pretty))
@@ -155,8 +155,8 @@ object DHOLTCC extends EmbeddingN {
       constants map (x => println(" - " + x._1 + ":" + x._2.pretty))
       println("using context: ")
       context map (x => println(" - " + x.pretty))
-       println("checking if: " + formula.pretty + " is of type " + targetType.pretty)
-       */
+      println("checking if: " + formula.pretty + " is of type " + targetType.pretty)
+ */
       formula match {
         case THF.UnaryFormula(_, f) => 
           if (targetType == bool)
@@ -175,28 +175,21 @@ object DHOLTCC extends EmbeddingN {
                   throw new EmbeddingException("Error in typing the simple skeleton:"+f.pretty)
               case THF.!> =>
                 if (targetType == univTp) {
-                  if (vl.isEmpty)
-                    checkType(variables, constants, context)(f, targetType)
-                  else {
-                    val curVar = vl.head
-                    checkType(variables, constants, context)(curVar._2, targetType) ++
-                    checkType(variables++List(curVar), constants, context)(THF.QuantifiedFormula(q, vl.tail, f), targetType)
-                  }
+                  val curVar = vl.head
+                  checkType(variables, constants, context)(curVar._2, targetType) ++ //This checks that the type of the type of the term arguments is type
+                  checkType(variables++List(curVar), constants, context)(THF.QuantifiedFormula(q, vl.tail, f), targetType)
+
                 }
                 else
                   throw new EmbeddingException("No type-hirarchy. " + formula.pretty + " must be of type " + univTp.pretty + " is of type " + targetType.pretty + ".")
               case THF.^ =>
-                if (vl.isEmpty)                                                                                  //catch empty quantifier list due to processing
-                  checkType(variables, constants, context)(f, targetType)
-                else {
-                  val curVar = vl.head
-                  targetType match {
-                    case THF.QuantifiedFormula(THF.!>, (curType@(n, curVar._2)) :: ivl, b) =>
-                      checkType(variables++List(curVar)++List(curType), constants, context)(THF.QuantifiedFormula(q, vl.tail, f) , THF.QuantifiedFormula(THF.!>, ivl, b))
-                    case THF.BinaryFormula(THF.FunTyConstructor, curVar._2, b) =>
-                      checkType(variables++List(curVar), constants, context)(THF.QuantifiedFormula(q, vl.tail, f), b)
-                    case b => throw new EmbeddingException("Error in typing the simple skeleton:"+f.pretty+ " needs to have a function type, but is of type " + b.pretty)
-                  }
+                val curVar = vl.head
+                targetType match {
+                  case THF.QuantifiedFormula(THF.!>, (curType@(n, curVar._2)) :: ivl, b) =>
+                    checkType(variables++List(curVar)++List(curType), constants, context)(THF.QuantifiedFormula(q, vl.tail, f), THF.QuantifiedFormula(THF.!>, ivl, b))
+                  case THF.BinaryFormula(THF.FunTyConstructor, curVar._2, b) =>
+                    checkType(variables++List(curVar), constants, context)(THF.QuantifiedFormula(q, vl.tail, f), b)
+                  case b => throw new EmbeddingException("Error in typing the simple skeleton:"+f.pretty+ " needs to have a function type, but is of type " + b.pretty)
                 }
               case _ =>
                 throw new EmbeddingException("Unsupported quantifier:"+q)                                        //other quantifiers (SumTypeConst, ProdTypeConst, Choice, Selection) not supported
@@ -223,9 +216,11 @@ object DHOLTCC extends EmbeddingN {
                   case t =>
                     throw new EmbeddingException("Unexpected type: " + t.pretty + " for term " + base.pretty)
                 }
-//              args map (x => println(x.pretty))
-//              println(" for basetypeargs \n")
-//              instanciatedBaseTypeArgs map (x => println(x.pretty))
+              /*
+              args map (x => println(x.pretty))
+               println(" for basetypeargs")
+               instanciatedBaseTypeArgs map (x => println(x.pretty))
+               */
               if (args.length == instanciatedBaseTypeArgs.length) {
                 genObligation(variables, constants, context)(inferType(variables, constants)(f), targetType) ++
                 (args.lazyZip(instanciatedBaseTypeArgs) flatMap ((x,y) => checkType(variables, constants, context)(x,y)))
@@ -234,17 +229,18 @@ object DHOLTCC extends EmbeddingN {
               }
             case THF.Eq =>
               if (targetType == bool) {
-                val lSubs = (properInferType(variables, constants)(l))
+//                println("infering left and right of " ++ formula.pretty)//DEBUG
+                val lSubs = properInferType(variables, constants)(l)
                 val lType = lSubs.find(_._1.name == "Alhpa").get 
-//                println("after infer type left: ")
+//                println("after infer type left: ") //DEBUG
 //                lSubs.map(x => println(x._1.pretty + ":" + x._2.pretty))
-                val rSubs = (properInferType(variables, constants)(r))
+                val rSubs = properInferType(variables, constants)(r)
                 val rType = rSubs.find(_._1.name == "Alhpa").get
 //                println("after infer type right: ")
 //                rSubs.map(x => println(x._1.pretty + ":" + x._2.pretty))
                 genObligation(variables, constants, context)(lType._2, rType._2) ++
-                  checkType(variables, constants, context)(l, lType._2) ++
-                  checkType(variables, constants, context)(r, rType._2)
+                checkType(variables, constants, context)(l, lType._2) ++
+                checkType(variables, constants, context)(r, rType._2)
               }
               else
                 throw new EmbeddingException("Error in typing the simple skeleton: Equality "+f.pretty+" needs to be of type bool")
@@ -261,11 +257,8 @@ object DHOLTCC extends EmbeddingN {
               else
                 throw new EmbeddingException("No type-hirarchy. " + formula.pretty + " must be of type " + univTp.pretty + " is of type " + targetType.pretty + ".")
             case THF.Impl | THF.& | THF.~& =>
-              if (targetType == bool) {
-                val usedVars = variables.filter(x => occurs(l, x._1))
-                val conj = l
-                checkType(variables, constants, context)(l, targetType) ++ checkType(variables, constants, (conj::context))(r, targetType)
-              }
+              if (targetType == bool) 
+                checkType(variables, constants, context)(l, targetType) ++ checkType(variables, constants, (l::context))(r, targetType)
               else
                 throw new EmbeddingException("Error in typing the simple skeleton: Boolean "+f.pretty+" needs to be of type bool")
             case THF.<= =>
@@ -274,11 +267,8 @@ object DHOLTCC extends EmbeddingN {
               else
                 throw new EmbeddingException("Error in typing the simple skeleton: Boolean "+f.pretty+" needs to be of type bool")
             case THF.| | THF.~| =>
-              if (targetType == bool) {
-                val usedVars = variables.filter(x => occurs(l, x._1))
-                val conj = l
-                checkType(variables, constants, context)(l, targetType) ++ checkType(variables, constants, (THF.UnaryFormula(THF.~, conj))::context)(r, targetType)
-              }
+              if (targetType == bool)
+                checkType(variables, constants, context)(l, targetType) ++ checkType(variables, constants, (THF.UnaryFormula(THF.~, l))::context)(r, targetType)
               else
                 throw new EmbeddingException("Error in typing the simple skeleton: Boolean "+f.pretty+" needs to be of type bool")
             case c =>
@@ -326,7 +316,7 @@ object DHOLTCC extends EmbeddingN {
       auxUnApply(formula, Nil)
     }
 
-    private def properInferType(variables: List[(String, THF.Type)], constants: List[(String, THF.Type)])(formula: THF.Formula): List[(THF.Variable, THF.Type)] = { 
+    private def properInferType(variables: List[THF.TypedVariable], constants: List[(String, THF.Type)])(formula: THF.Formula): List[(THF.Variable, THF.Type)] = { 
       var varCnt = 0
       def getFreshTypeVar: THF.Type = { //the typos are features and prevent clashes with names in the problem file (:
         varCnt += 1
@@ -336,7 +326,7 @@ object DHOLTCC extends EmbeddingN {
         varCnt += 1
         "FreshIntorducedVarName"+(varCnt-1)
       }
-      def properInferTypeAux(variables: List[(String, THF.Type)], constants: List[(String, THF.Type)], arguments: List[THF.Formula])(f: THF.Formula, t: THF.Type): List[THF.BinaryFormula] = {
+      def properInferTypeAux(variables: List[THF.TypedVariable], constants: List[(String, THF.Type)], arguments: List[THF.Formula])(f: THF.Formula, t: THF.Type): List[THF.BinaryFormula] = {
 //        println("infering type of: " + f.pretty + "( " + f + " )")
         f match {
           case THF.FunctionTerm(n, _) =>
@@ -345,14 +335,14 @@ object DHOLTCC extends EmbeddingN {
             if (foundVal != None){
               var ret = foundVal.get._2
               if (arguments != Nil)
-                ret = arguments.foldLeft(foundVal.get._2)((acc, v) => applyFunction(variables, constants, Nil)(acc, v))
+                ret = arguments.foldLeft(foundVal.get._2)((acc, v) => unsaveApplyFunction(variables, constants, Nil)(acc, v))
 //              println(" and found: " + ret + ", assigned to " + t)
               List(THF.BinaryFormula(THF.Eq, uniquifyVarNamesAux(ret), t))
             }
             else
               throw new EmbeddingException("Failed to find variable or constant during type inference: " + f.pretty + " : " + t.pretty)
           case THF.BinaryFormula(THF.App, l, r) =>
-            val rType = properInferType(variables, constants)(r).find(_._1.name == "Alhpa").get._2
+            val rType = inferType(variables, constants)(r)//properInferType(variables, constants)(r)._1.find(_._1.name == "Alhpa").get._2 this should be enough
 //            println("rType = " + rType)
             if (rType == univTp) {
               properInferTypeAux(variables, constants, arguments++List(r))(l, t)
@@ -398,7 +388,18 @@ object DHOLTCC extends EmbeddingN {
       solveUnificationProblem(properInferTypeAux(variables, constants, Nil)(formula, THF.Variable("Alhpa")), List[(THF.Variable, THF.Type)]())
     }
 
-    private def applyFunction(variables: List[(String, THF.Type)], constants: List[(String, THF.Type)], context: List[THF.Formula])(formula: THF.Formula, argument: THF.Formula) = formula match {
+    private def unsaveApplyFunction(variables: List[THF.TypedVariable], constants: List[(String, THF.Type)], context: List[THF.Formula])(formula: THF.Formula, argument: THF.Formula) = formula match {
+      case THF.QuantifiedFormula(THF.!>, v+:Nil, f) =>
+        variableReplace(f, (v._1, argument))
+      case THF.QuantifiedFormula(THF.!>, v+:vl, f) =>
+        THF.QuantifiedFormula(THF.!>, vl, variableReplace(f, (v._1, argument)))
+      case THF.BinaryFormula(THF.FunTyConstructor, l, r) =>
+        r
+      case _ =>
+        throw new EmbeddingException("Can't unsavely apply argument " + argument.pretty + " to function " + formula)
+    }
+
+    private def applyFunction(variables: List[THF.TypedVariable], constants: List[(String, THF.Type)], context: List[THF.Formula])(formula: THF.Formula, argument: THF.Formula) = formula match {
       case THF.QuantifiedFormula(THF.!>, v+:Nil, f) =>
         if(checkType(variables, constants, context)(argument, v._2) == Nil) //pretty inefficient, maybe reconsider
           variableReplace(f, (v._1, argument))
@@ -420,9 +421,11 @@ object DHOLTCC extends EmbeddingN {
 
     private def solveUnificationProblem(equations: List[THF.Formula], substitutions: List[(THF.Variable, THF.Type)]): List[(THF.Variable, THF.Type)] = { //formula is either function term or variable
 // DEBUG
-//      println("=============================")
-//      equations map (x => println(x.pretty))
-//      println("=============================")
+/*
+      println("=============================")
+      equations map (x => println(x.pretty))
+       println("=============================")
+ */
       if(!equations.isEmpty) {
 //        println("unifying " + equations.head)
         equations.head match {
@@ -473,8 +476,10 @@ object DHOLTCC extends EmbeddingN {
             } else {
               solveUnificationProblem(equations.tail ++ List(equations.head), substitutions)
             }
+          case THF.BinaryFormula(THF.Eq, l, r) =>
+            throw new TypeErrorException(l,r)  
           case x =>
-            throw new EmbeddingException("Non-Equality handed to unification problem: " + x)
+            throw new EmbeddingException("Non-Equality handed to unification problem: " + x.pretty)
         }
       } else {
         return substitutions
@@ -551,55 +556,6 @@ object DHOLTCC extends EmbeddingN {
             f
         case _ =>
           throw new EmbeddingException("Unsupported formula to replace in: " + formula)
-      }
-    }
-
-    /**
-      * Infer the type of the given term from the types of the constants and variables in scope
-      * @param formula the term whoose type to infer
-      * @param variables the variables in the scope of the term
-      * @param constants the constants
-      * @return
-      */
-    private def inferType(variables: List[(String, TPTP.THF.Type)], constants: List[(String, TPTP.THF.Type)])(formula: TPTP.THF.Formula): TPTP.THF.Formula = {
-      @tailrec
-      def applyNTp(tp: THF.Formula, args: Seq[THF.Formula]): THF.Formula = tp match {
-        case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) if args.length == 1 => codomain
-        case THF.BinaryFormula(THF.FunTyConstructor, _, codomain) => applyNTp(codomain, args.tail)
-        case THF.QuantifiedFormula(THF.!>, variableList, body) =>
-          val substBody = substituteVars(body)(variableList, args)
-          if (variableList.length == args.length) { substBody } else {
-            THF.QuantifiedFormula(THF.!>, variableList.drop(args.length), substBody)
-          }
-      }
-
-      def lookupAtomic(name: String) = (constants++variables).find(_._1 == name)
-        .getOrElse(throw new EmbeddingException(s"Failed to look up variable or constant: "+name))._2
-      def unsupportedFormula(): THF.Formula = throw new EmbeddingException(s"Not allowed on term level: "+formula.pretty)
-      formula match {
-        case THF.FunctionTerm(f, Nil) => lookupAtomic(f)
-        case THF.FunctionTerm(f, args) =>
-          applyNTp(inferType(variables, constants)(atomicTerm(f)), args)
-        case THF.QuantifiedFormula(quantifier, variableList, body) => quantifier match {
-          case THF.! | THF.? => bool
-          case THF.^ => THF.QuantifiedFormula(THF.!>, variableList, inferType(variables, constants)(body))
-          case default => throw new EmbeddingException(s"Unsupported on type level: "+default.pretty)
-        }
-        case THF.Variable(name) => lookupAtomic(name)
-        case THF.UnaryFormula(THF.~, _) => bool
-        case THF.BinaryFormula(connective, left, right) => connective match {
-          case THF.App => applyNTp(inferType(variables, constants)(left), Seq(right))
-          case THF.FunTyConstructor | THF.ProductTyConstructor | THF.SumTyConstructor =>
-            throw new EmbeddingException(s"Not allowed on term level: "+connective.pretty)
-          case _ => bool
-        }
-        case THF.Tuple(_) => unsupportedFormula()
-        case THF.ConditionalTerm(_, thn, _) => inferType(variables, constants)(thn)
-        case THF.LetTerm(_, _, _) => unsupportedFormula()
-        case THF.DefinedTH1ConstantTerm(_) => unsupportedFormula()
-        case THF.ConnectiveTerm(_) => unsupportedFormula()
-        case THF.DistinctObject(_) => unsupportedFormula()
-        case THF.NumberTerm(_) => unsupportedFormula()
       }
     }
     private def uniquifyVarNamesAux(formula: THF.Formula): THF.Formula = formula match {

@@ -14,7 +14,9 @@ package object embeddings {
   /** Exception is thrown if the input problem lies outside the scope of an embedding (i.e. due to unsupported
    * language features). */
   final class UnsupportedFragmentException(msg: String) extends RuntimeException(msg)
-
+  /** Exception is thrown due to inability to unify terms, which happens during type inference for equality
+   * in DHOL type-checking. */
+  final class TypeErrorException(val left: THF.Formula, val right: THF.Formula) extends RuntimeException
 
   /////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////

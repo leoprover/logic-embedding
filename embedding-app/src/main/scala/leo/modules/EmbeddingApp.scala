@@ -2,7 +2,7 @@ package leo.modules
 
 import leo.datastructures.TPTP
 import leo.datastructures.TPTP.{AnnotatedFormula, Problem}
-import leo.modules.embeddings.{Embedding, EmbeddingException, EmbeddingN, Library, MalformedLogicSpecificationException, UnsupportedFragmentException, getLogicFromSpec, getLogicSpecFromProblem}
+import leo.modules.embeddings.{Embedding, EmbeddingException, EmbeddingN, Library, MalformedLogicSpecificationException, UnsupportedFragmentException, TypeErrorException, getLogicFromSpec, getLogicSpecFromProblem}
 import leo.modules.input.TPTPParser
 
 import java.io.{File, FileNotFoundException, PrintWriter}
@@ -127,6 +127,8 @@ object EmbeddingApp {
           error = Some("InputError", s"File cannot be found or is not readable/writable: ${e.getMessage}")
         case e: TPTPParser.TPTPParseException =>
           error = Some("SyntaxError", s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
+        case e: TypeErrorException =>
+          error = Some("TypeError", s"Unification process during type inference of equality failed. Unable to unify ${e.left.pretty} and ${e.right.pretty}")
         case e: Throwable =>
           error = Some("Error", s"Unexpected error: ${e.getMessage}. This is considered an implementation error, please report this!")
           System.err.println(s"Exception: ${e.toString}")
