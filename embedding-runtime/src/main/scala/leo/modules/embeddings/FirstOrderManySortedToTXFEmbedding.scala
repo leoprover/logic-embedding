@@ -37,7 +37,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.7"
+  override final val version: String = "1.3.8"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
@@ -393,6 +393,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         /* special cases END */
         case TFF.FormulaTerm(formula) => TFF.FormulaTerm(convertFormula(formula, worldPlaceholder, boundVars))
         case TFF.Variable(name) => TFF.Variable(escapeTermVariable(name))
+        case TFF.AtomicTerm(f, args) => TFF.AtomicTerm(f, args.map(convertTerm(_, worldPlaceholder, boundVars)))
         case _ => term
       }
     }
