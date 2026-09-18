@@ -1223,7 +1223,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
             s"thf(mrel_gl, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."
           ))
         },
-        "$modal_axiom_GRZ" -> {
+        "$modal_axiom_Grz" -> {
           val formula = convertFormula(thf("($box @ (($box @ (Phi => ($box @ Phi))) => Phi)) => Phi")).pretty
           Some(annotatedTHF(
             s"thf(mrel_grz, axiom, ![Phi:$worldTypeName>$$o]: (mglobal @ ($formula)))."

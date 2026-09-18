@@ -51,7 +51,7 @@ trait ModalEmbeddingLike {
     "$modal_system_4_1" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_H"),
     "$modal_system_4_2" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_M"),
     "$modal_system_4_3" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_G"),
-    "$modal_system_Grz" -> Seq("$modal_axiom_K", "$modal_axiom_Grz"),
+    "$modal_system_Grz" -> Seq("$modal_axiom_K", "$modal_axiom_T", "$modal_axiom_4", "$modal_axiom_Grz"),
     "$modal_system_GL" -> Seq("$modal_axiom_K", "$modal_axiom_GL")
   )
 
