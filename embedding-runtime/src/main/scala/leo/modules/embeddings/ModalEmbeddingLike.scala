@@ -55,6 +55,6 @@ trait ModalEmbeddingLike {
     "$modal_system_GL" -> Seq("$modal_axiom_K", "$modal_axiom_GL")
   )
 
-  protected final val logicSpecParamNames = Seq(logicSpecParamNameTermLocality, logicSpecParamNameRigidity,
+  protected final val logicSpecParamNames: Seq[String] = Seq(logicSpecParamNameTermLocality, logicSpecParamNameRigidity,
     logicSpecParamNameQuantification, logicSpecParamNameModalities)
 }
