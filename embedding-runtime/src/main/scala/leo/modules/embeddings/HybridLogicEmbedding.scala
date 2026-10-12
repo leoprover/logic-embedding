@@ -472,7 +472,7 @@ object HybridLogicEmbedding extends Embedding with ModalEmbeddingLike {
       if (isMultiModal) {
         val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) indexedSemanticAxiomTable else indexedSyntacticAxiomTable
         modalOperators foreach { index =>
-          val modalSystem = state(MODALS).apply(index)
+          val modalSystem: Seq[String] = state(MODALS).apply(index)
           val axiomNames = if (isModalSystemName(modalSystem.head)) modalSystemTable(modalSystem.head) else modalSystem
           axiomNames foreach { ax =>
             val axiom = axiomTable.apply(ax)
@@ -483,7 +483,7 @@ object HybridLogicEmbedding extends Embedding with ModalEmbeddingLike {
           }
         }
       } else {
-        val modalSystem = state.getDefault(MODALS)
+        val modalSystem: Option[Seq[String]] = state.getDefault(MODALS)
         modalSystem match {
           case Some(value) =>
             val axiomNames = if (isModalSystemName(value.head)) modalSystemTable(value.head) else value

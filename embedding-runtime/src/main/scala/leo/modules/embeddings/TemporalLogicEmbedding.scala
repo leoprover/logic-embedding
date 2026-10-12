@@ -442,12 +442,12 @@ object TemporalLogicEmbedding extends Embedding {
       // Then: Give mrel properties (sem/syn)
       // write used properties and assign (if semantical)
       // or write syntactical axioms (if syntactical)
-      val modalSystem = state.getDefault(MODALS)
+      val modalSystem: Option[Seq[THF.Formula]] = state.getDefault(MODALS)
       modalSystem match {
         case Some(value) =>
           val axiomNames = value
           val axiomTable = if (modalityEmbeddingType == MODALITY_EMBEDDING_SEMANTICAL) semanticAxiomTable else syntacticAxiomTable
-          val modalAxioms = axiomNames.flatMap(axiomTable).toSet
+          val modalAxioms = axiomNames.flatMap(x => axiomTable.apply(x)).toSet
           result.appendAll(modalAxioms)
         case None => throw new EmbeddingException(s"No semantics for modal operators specified, embedding not possible.")
       }
