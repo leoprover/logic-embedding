@@ -10,21 +10,16 @@ import TPTP.{AnnotatedFormula, THF}
  *
  * @see [[https://arxiv.org/abs/2111.01654]]
  */
-object PublicAnnouncementLogicEmbedding extends Embedding {
-  object PublicAnnouncementLogicEmbeddingParameter extends Enumeration { }
-
-  override final type OptionType = PublicAnnouncementLogicEmbeddingParameter.type
-
+object PublicAnnouncementLogicEmbedding extends Embedding with NoEmbeddingParameters {
   override final val name: String = "$$pal"
-  override final val version: String = "1.0"
-  override final def embeddingParameter: PublicAnnouncementLogicEmbeddingParameter.type = PublicAnnouncementLogicEmbeddingParameter
+  override final val version: String = "1.0.1"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  {
     import leo.modules.input.TPTPParser.annotatedTHF
     annotatedTHF(s"thf(logic_spec, logic, ($name == [ ] )).")
   }
 
-  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[PublicAnnouncementLogicEmbeddingParameter.Value]): TPTP.Problem =
+  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new PALEmbeddingImpl(problem).apply()
 
   /////////////////////////////////////////////////////////////////////////////////

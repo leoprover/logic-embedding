@@ -8,26 +8,17 @@ import TPTP.{AnnotatedFormula, THF}
 import scala.annotation.unused
 
 object HybridLogicEmbedding extends Embedding with ModalEmbeddingLike {
-  object HybridLogicEmbeddingOption extends Enumeration {
-    // Hidden on purpose, to allow distinction between the object itself and its values.
-    //    type ModalEmbeddingOption = Value
-    @unused
-    final val MONOMORPHIC, POLYMORPHIC,
-    MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL = Value
-  }
-
-  override type OptionType = HybridLogicEmbeddingOption.type
-  override final def embeddingParameter: HybridLogicEmbeddingOption.type = HybridLogicEmbeddingOption
+  override final def supportedParameters: Set[Parameter] = Set(MONOMORPHIC, POLYMORPHIC,
+    MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL, DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL)
 
   override final def name: String = "$$hybrid"
-  override final def version: String = "1.0.1"
+  override final def version: String = "1.0.2"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
     generateTHFSpecification(name, logicSpecParamNames, specs)
 
   override final def apply(problem: TPTP.Problem,
-                           embeddingOptions: Set[HybridLogicEmbeddingOption.Value]): TPTP.Problem =
+                           embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new HybridLogicEmbeddingImpl(problem, embeddingOptions).apply()
 
   /////////////////////////////////////////////////////////////////////////////////
@@ -35,8 +26,7 @@ object HybridLogicEmbedding extends Embedding with ModalEmbeddingLike {
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class HybridLogicEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[HybridLogicEmbeddingOption.Value]) {
-    import HybridLogicEmbeddingOption._
+  private[this] final class HybridLogicEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]) {
 
     ///////////////////////////////////////////////////////////////////
     private final val state = FlexMap.apply()

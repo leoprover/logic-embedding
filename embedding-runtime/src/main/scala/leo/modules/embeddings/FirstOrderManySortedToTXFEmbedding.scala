@@ -26,40 +26,29 @@ import scala.annotation.unused
  * when passing the [[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.POLYMORPHIC]] parameter.
  */
 object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingLike {
-
-
-  object FOMLToTXFEmbeddingParameter extends Enumeration {
-    // Hidden on purpose, to allow distinction between the object itself and its values.
-    //    type FOMLToTXFEmbeddingParameter = Value
-    final val POLYMORPHIC, ALLOW_EMPTY_DOMAINS, NO_UNIVERSAL_S5 = Value
-  }
-  override type OptionType = FOMLToTXFEmbeddingParameter.type
-  override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
+  override final def supportedParameters: Set[Parameter] = Set(POLYMORPHIC, ALLOW_EMPTY_DOMAINS, NO_UNIVERSAL_S5)
 
   override final val name: String = "$$fomlModel"
-  override final val version: String = "1.3.8"
+  override final val version: String = "1.3.9"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
 
-  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
+  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     apply0(problem, embeddingOptions)
 
-  protected[embeddings] final def apply0(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
+  protected[embeddings] final def apply0(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new FirstOrderManySortedToTXFEmbeddingImpl(problem, embeddingOptions).apply()
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
-                           embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): Seq[TPTP.AnnotatedFormula] =
+                           embeddingOptions: Set[EmbeddingParameterType]): Seq[TPTP.AnnotatedFormula] =
     apply(TPTP.Problem(Seq.empty, formulas, Map.empty), embeddingOptions).formulas
 
   /////////////////////////////////////////////////////////////////////////////////////////////
   /////////////// Embedding implementation BEGIN
   /////////////////////////////////////////////////////////////////////////////////////////////
   private[this] final class FirstOrderManySortedToTXFEmbeddingImpl(problem: TPTP.Problem,
-                                                                   embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]) {
-
-    import FOMLToTXFEmbeddingParameter._
-
+                                                                   embeddingOptions: Set[EmbeddingParameterType]) {
     // Semantics dimensions
     // (1) Rigid or flexible symbols
     private[this] var rigidityMap: Map[String, Rigidity] = Map.empty

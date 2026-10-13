@@ -16,14 +16,10 @@ import TPTP.{AnnotatedFormula, THF}
  * @see [[https://xavierparent.co.uk/pdf/article-final.pdf]]
  * @see [[https://xavierparent.co.uk/pdf/eHOL.pdf]]
  */
-object DyadicDeonticLogicEmbedding extends Embedding {
-  object DyadicDeonticLogicEmbeddingParameter extends Enumeration { }
-
-  override final type OptionType = DyadicDeonticLogicEmbeddingParameter.type
+object DyadicDeonticLogicEmbedding extends Embedding with NoEmbeddingParameters {
 
   override final val name: String = "$$ddl"
-  override final val version: String = "1.1"
-  override final def embeddingParameter: DyadicDeonticLogicEmbeddingParameter.type = DyadicDeonticLogicEmbeddingParameter
+  override final val version: String = "1.1.1"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  {
     import leo.modules.input.TPTPParser.annotatedTHF
@@ -39,7 +35,7 @@ object DyadicDeonticLogicEmbedding extends Embedding {
     annotatedTHF(spec.toString)
   }
 
-  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[DyadicDeonticLogicEmbeddingParameter.Value]): TPTP.Problem =
+  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new DDLEmbeddingImpl(problem).apply()
 
   /////////////////////////////////////////////////////////////////////////////////

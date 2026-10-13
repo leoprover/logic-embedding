@@ -8,31 +8,18 @@ import TPTP.{AnnotatedFormula, THF, THFAnnotated}
 import scala.annotation.unused
 
 object ModalEmbedding extends Embedding with ModalEmbeddingLike {
-  object ModalEmbeddingOption extends Enumeration {
-    // Hidden on purpose, to allow distinction between the object itself and its values.
-    //    type ModalEmbeddingOption = Value
-    @unused
-    final val MONOMORPHIC, POLYMORPHIC,
-    MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, FORCE_HIGHERORDER, ALLOW_EMPTY_DOMAINS, SILENT, NO_UNIVERSAL_S5 = Value
-  }
-
-  override type OptionType = ModalEmbeddingOption.type
-  override final def embeddingParameter: ModalEmbeddingOption.type = ModalEmbeddingOption
-
   override final def name: String = "$modal"
-  override final def version: String = "2.2.2"
+  override final def version: String = "2.2.3"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =
     generateTHFSpecification(name, logicSpecParamNames, specs)
 
   override final def apply(problem: TPTP.Problem,
-                  embeddingOptions: Set[ModalEmbeddingOption.Value]): TPTP.Problem = {
+                  embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem = {
     // If the FORCE_HIGHERORDER parameter is set, the embedding will be to THF regardless whether it's first-order (TFF)
     // or not. If unset, the modal-to-TFF embedding will be used if the logic spec is in TFF, to THF otherwise.
-    if (embeddingOptions.contains(ModalEmbeddingOption.FORCE_HIGHERORDER)) new ModalEmbeddingImpl(problem, embeddingOptions).apply()
+    if (embeddingOptions.contains(FORCE_HIGHERORDER)) new ModalEmbeddingImpl(problem, embeddingOptions).apply()
     else {
-      import FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter
       val maybeSpec = getLogicSpecFromProblem(problem.formulas)
       maybeSpec match {
         case Some(spec) if spec.formulaType == TPTP.AnnotatedFormula.FormulaType.TFF =>
@@ -40,17 +27,17 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
           // contains extended specification entries (interaction axioms, meta-axioms, etc....)
           if (testSpecForExtendedEntries(spec)) new ModalEmbeddingImpl(problem, embeddingOptions).apply()
           else {
-            if (!embeddingOptions.contains(ModalEmbeddingOption.SILENT)) System.out.println(s"%%% First-order logic specification detected, trying modal-logic-to-TXF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}) ... Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
+            if (!embeddingOptions.contains(SILENT)) System.out.println(s"%%% First-order logic specification detected, trying modal-logic-to-TXF embedding (redirected from embedding '$$$name' to embedding '${FirstOrderManySortedToTXFEmbedding.name}' version ${FirstOrderManySortedToTXFEmbedding.version}) ... Use flag -p FORCE_HIGHERORDER if you want to have THF output instead.")
             /* create new parameter set */
-            var parameters: Set[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.Value] = Set.empty
-            if (embeddingOptions.contains(ModalEmbeddingOption.POLYMORPHIC)) parameters = parameters + FOMLToTXFEmbeddingParameter.POLYMORPHIC
-            if (embeddingOptions.contains(ModalEmbeddingOption.ALLOW_EMPTY_DOMAINS)) parameters = parameters + FOMLToTXFEmbeddingParameter.ALLOW_EMPTY_DOMAINS
-            if (embeddingOptions.contains(ModalEmbeddingOption.NO_UNIVERSAL_S5)) parameters = parameters + FOMLToTXFEmbeddingParameter.NO_UNIVERSAL_S5
+            var parameters: Set[FirstOrderManySortedToTXFEmbedding.EmbeddingParameterType] = Set.empty
+            if (embeddingOptions.contains(POLYMORPHIC)) parameters = parameters + FirstOrderManySortedToTXFEmbedding.POLYMORPHIC
+            if (embeddingOptions.contains(ALLOW_EMPTY_DOMAINS)) parameters = parameters + FirstOrderManySortedToTXFEmbedding.ALLOW_EMPTY_DOMAINS
+            if (embeddingOptions.contains(NO_UNIVERSAL_S5)) parameters = parameters + FirstOrderManySortedToTXFEmbedding.NO_UNIVERSAL_S5
             try {
               FirstOrderManySortedToTXFEmbedding.apply0(problem, parameters)
             } catch {
               case _:UnsupportedFragmentException =>
-                if (!embeddingOptions.contains(ModalEmbeddingOption.SILENT)) System.out.println("%%% Info: Modal-logic-to-TXF embedding failed (due to unsupported language features). Falling back to higher-order embedding ...")
+                if (!embeddingOptions.contains(SILENT)) System.out.println("%%% Info: Modal-logic-to-TXF embedding failed (due to unsupported language features). Falling back to higher-order embedding ...")
               new ModalEmbeddingImpl(problem, embeddingOptions).apply()
             }
 
@@ -61,7 +48,7 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
   }
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
-                           embeddingOptions: Set[ModalEmbeddingOption.Value]): Seq[TPTP.AnnotatedFormula] =
+                           embeddingOptions: Set[EmbeddingParameterType]): Seq[TPTP.AnnotatedFormula] =
     apply(TPTP.Problem(Seq.empty, formulas, Map.empty), embeddingOptions).formulas
 
   /////////////////////////////////////////////////////////////////////////////////
@@ -69,9 +56,8 @@ object ModalEmbedding extends Embedding with ModalEmbeddingLike {
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class ModalEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[ModalEmbeddingOption.Value]) {
+  private[this] final class ModalEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]) {
 
-    import ModalEmbeddingOption._
     import scala.collection.mutable
     ///////////////////////////////////////////////////////////////////
 

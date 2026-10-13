@@ -11,7 +11,7 @@ import scala.collection.mutable
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
-  final val version: String = "1.9.5"
+  final val version: String = "1.9.7"
 
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None
@@ -68,10 +68,9 @@ object EmbeddingApp {
                 // Transform embedding parameters (explicitly repeated because of subtype incompability. Ugly, but small scope.)
                 //noinspection DuplicatedCode
                 val parameters = parameterNames.map { p =>
-                  try {
-                    embeddingFunctionN.embeddingParameter.withName(p)
-                  } catch {
-                    case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
+                  embeddingFunctionN.embeddingParameter.valueOf(p) match {
+                    case Some(value) => value
+                    case None => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
                   }
                 }
                 val embeddedProblems = embeddingFunctionN.applyN(problemToBeEmbedded, parameters)
@@ -80,10 +79,9 @@ object EmbeddingApp {
                 // Transform embedding parameters
                 //noinspection DuplicatedCode
                 val parameters = parameterNames.map { p =>
-                  try {
-                    embeddingFunction.embeddingParameter.withName(p)
-                  } catch {
-                    case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
+                  embeddingFunction.embeddingParameter.valueOf(p) match {
+                    case Some(value) => value
+                    case None => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
                   }
                 }
                 val embeddedProblem = embeddingFunction.apply(problemToBeEmbedded, parameters)

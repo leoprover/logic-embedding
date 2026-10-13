@@ -8,20 +8,12 @@ import TPTP.{AnnotatedFormula, THF}
 import java.util.logging.Logger
 import scala.collection.mutable
 
-object TemporalLogicEmbedding extends Embedding {
-  object TemporalLogicEmbeddingOption extends Enumeration {
-    // Hidden on purpose, to allow distinction between the object itself and its values.
-    //    type ModalEmbeddingOption = Value
-    final val MONOMORPHIC, POLYMORPHIC,
-    MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL = Value
-  }
-
-  override type OptionType = TemporalLogicEmbeddingOption.type
-  override final def embeddingParameter: TemporalLogicEmbeddingOption.type = TemporalLogicEmbeddingOption
+object TemporalLogicEmbedding extends Embedding with ModalEmbeddingLike {
+  override final def supportedParameters: Set[Parameter] = Set(MONOMORPHIC, POLYMORPHIC,
+    MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL, DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL)
 
   override final val name: String = "temporal_instant"
-  override final def version: String = "1.0"
+  override final def version: String = "1.0.1"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -39,11 +31,11 @@ object TemporalLogicEmbedding extends Embedding {
   }
 
   override final def apply(problem: TPTP.Problem,
-                           embeddingOptions: Set[TemporalLogicEmbeddingOption.Value]): TPTP.Problem =
+                           embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new TemporalLogicEmbeddingImpl(problem, embeddingOptions).apply()
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
-                           embeddingOptions: Set[TemporalLogicEmbeddingOption.Value]): Seq[TPTP.AnnotatedFormula] =
+                           embeddingOptions: Set[EmbeddingParameterType]): Seq[TPTP.AnnotatedFormula] =
     apply(TPTP.Problem(Seq.empty, formulas, Map.empty), embeddingOptions).formulas
 
   /////////////////////////////////////////////////////////////////////////////////
@@ -51,8 +43,7 @@ object TemporalLogicEmbedding extends Embedding {
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class TemporalLogicEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[TemporalLogicEmbeddingOption.Value]) {
-    import TemporalLogicEmbeddingOption._
+  private[this] final class TemporalLogicEmbeddingImpl(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]) {
 
     ///////////////////////////////////////////////////////////////////
     private final val state = FlexMap.apply()

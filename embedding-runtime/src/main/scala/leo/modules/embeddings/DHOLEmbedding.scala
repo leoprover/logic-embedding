@@ -7,24 +7,16 @@ import leo.datastructures.TPTP.THF.FunctionTerm
 import scala.annotation.tailrec
 
 /** @author Colin Rothgang, Rhea Ranalter */
-object DHOLEmbedding extends Embedding {
+object DHOLEmbedding extends Embedding with NoEmbeddingParameters {
   import DHOLEmbeddingUtils._
   var constants : List[(String, TPTP.THF.Type)] = Nil
   var depTypedTerms : List[THF.Formula] = Nil
   var dependentPoly : Boolean = false
-
-  object DHOLEmbeddingParameter extends Enumeration { }
-  /** The type of parameter options provided by the embedding instance. */
-  override type OptionType = DHOLEmbeddingParameter.type
-
   /** The name of the embedding */
   override def name: String = "$$dhol"
 
   /** The version number of the embedding instance implementation. */
-  override def version: String = "1.3.0"
-
-  /** The enumeration object of this embedding's parameter values. */
-  override def embeddingParameter: DHOLEmbeddingParameter.type = DHOLEmbeddingParameter
+  override def version: String = "1.3.1"
 
   /** Given the specification `specs` construct a valid TPTP logic specification for the logic
    * targeted by this embedding. */
@@ -33,7 +25,7 @@ object DHOLEmbedding extends Embedding {
     annotatedTHF(s"thf(logic_spec, logic, $name).")
   }
 
-  override def apply(problem: TPTP.Problem, embeddingOptions: Set[DHOLEmbeddingParameter.Value]): TPTP.Problem =
+  override def apply(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new DHOLEmbeddingImpl(problem).apply()
 
   /////////////////////////////////////////////////////////////////////////////////

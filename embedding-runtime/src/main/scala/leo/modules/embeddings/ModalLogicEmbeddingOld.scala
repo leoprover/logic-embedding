@@ -11,20 +11,12 @@ import scala.collection.mutable
 /**
  * Old version of Modal logic embedding. You might want to use [[ModalEmbedding]] instead.
  */
-object ModalLogicEmbeddingOld extends Embedding {
-  object ModalLogicEmbeddingOldOption extends Enumeration {
-    // Hidden on purpose, to allow distinction between the object itself and its values.
-    //    type ModalEmbeddingOption = Value
-    final val MONOMORPHIC, POLYMORPHIC,
-    MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL,
-    DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL = Value
-  }
-
-  override type OptionType = ModalLogicEmbeddingOldOption.type
-  override final def embeddingParameter: ModalLogicEmbeddingOldOption.type = ModalLogicEmbeddingOldOption
+object ModalLogicEmbeddingOld extends Embedding with ModalEmbeddingLike {
+  override final def supportedParameters: Set[Parameter] = Set(MONOMORPHIC, POLYMORPHIC,
+    MODALITIES_SEMANTICAL, MODALITIES_SYNTACTICAL, DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL)
 
   override final def name: String = "modal_old"
-  override final def version: String = "1.5.7"
+  override final def version: String = "1.5.8"
 
   private[this] final val defaultConstantSpec = "$rigid"
   private[this] final val defaultQuantificationSpec = "$constant"
@@ -42,11 +34,11 @@ object ModalLogicEmbeddingOld extends Embedding {
   }
 
   override final def apply(problem: TPTP.Problem,
-                           embeddingOptions: Set[ModalLogicEmbeddingOldOption.Value]): TPTP.Problem =
+                           embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new ModalLogicEmbeddingOldImpl(problem, embeddingOptions).apply()
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
-                           embeddingOptions: Set[ModalLogicEmbeddingOldOption.Value]): Seq[TPTP.AnnotatedFormula] =
+                           embeddingOptions: Set[EmbeddingParameterType]): Seq[TPTP.AnnotatedFormula] =
     apply(TPTP.Problem(Seq.empty, formulas, Map.empty), embeddingOptions).formulas
 
   /////////////////////////////////////////////////////////////////////////////////
@@ -54,8 +46,7 @@ object ModalLogicEmbeddingOld extends Embedding {
   // The embedding
   /////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////
-  private[this] final class ModalLogicEmbeddingOldImpl(problem: TPTP.Problem, embeddingOptions: Set[ModalLogicEmbeddingOldOption.Value]) {
-    import ModalLogicEmbeddingOldOption._
+  private[this] final class ModalLogicEmbeddingOldImpl(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]) {
 
     ///////////////////////////////////////////////////////////////////
     private final val state = FlexMap.apply()

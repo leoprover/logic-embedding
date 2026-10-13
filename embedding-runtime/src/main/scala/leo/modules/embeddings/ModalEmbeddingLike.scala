@@ -4,6 +4,41 @@ package leo.modules.embeddings
  * Collection of definitions that may be relevant for different modal-like embeddings.
  */
 trait ModalEmbeddingLike {
+  abstract sealed class Parameter
+  case object MONOMORPHIC extends Parameter
+  case object POLYMORPHIC extends Parameter
+  case object MODALITIES_SEMANTICAL extends Parameter
+  case object MODALITIES_SYNTACTICAL extends Parameter
+  case object DOMAINS_SEMANTICAL extends Parameter
+  case object DOMAINS_SYNTACTICAL extends Parameter
+  case object FORCE_HIGHERORDER extends Parameter
+  case object ALLOW_EMPTY_DOMAINS extends Parameter
+  case object SILENT extends Parameter
+  case object NO_UNIVERSAL_S5 extends Parameter
+
+  object Parameter extends Embedding.EmbeddingParameter[Parameter] {
+    override def valueOf(s: String): Option[Parameter] = s match {
+      case "MONOMORPHIC" => Some(MONOMORPHIC)
+      case "POLYMORPHIC" => Some(POLYMORPHIC)
+      case "MODALITIES_SEMANTICAL" => Some(MODALITIES_SEMANTICAL)
+      case "MODALITIES_SYNTACTICAL" => Some(MODALITIES_SYNTACTICAL)
+      case "DOMAINS_SEMANTICAL" => Some(DOMAINS_SEMANTICAL)
+      case "DOMAINS_SYNTACTICAL" => Some(DOMAINS_SYNTACTICAL)
+      case "FORCE_HIGHERORDER" => Some(FORCE_HIGHERORDER)
+      case "ALLOW_EMPTY_DOMAINS" => Some(ALLOW_EMPTY_DOMAINS)
+      case "SILENT" => Some(SILENT)
+      case "NO_UNIVERSAL_S5" => Some(NO_UNIVERSAL_S5)
+      case _ => None
+    }
+    override def values: Set[Parameter] = supportedParameters
+  }
+  protected def supportedParameters: Set[Parameter] = Set(MONOMORPHIC, POLYMORPHIC, MODALITIES_SEMANTICAL,
+    MODALITIES_SYNTACTICAL, DOMAINS_SEMANTICAL, DOMAINS_SYNTACTICAL, FORCE_HIGHERORDER,
+    ALLOW_EMPTY_DOMAINS, SILENT, NO_UNIVERSAL_S5)
+
+  type EmbeddingParameterType = Parameter
+  final def embeddingParameter: Embedding.EmbeddingParameter[Parameter] = Parameter
+
   protected final val allowedModalLogicNames: Seq[String] = Seq("$modal", "$alethic_modal", "$deontic_modal", "$epistemic_modal", "$doxastic_modal")
   protected final val synonymsForBox: Seq[String] = Seq("$box","$necessary","$obligatory","$knows","$believes")
   protected final val synonymsForDiamond: Seq[String] = Seq("$dia","$possible","$permissible","$canKnow","$canBelieve")
