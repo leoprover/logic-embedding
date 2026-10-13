@@ -294,6 +294,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             quantifier match {
               case TFF.! => TFF.BinaryFormula(TFF.Impl, conjunctionOfGuards, convertedBody0)
               case TFF.? => TFF.BinaryFormula(TFF.&, conjunctionOfGuards, convertedBody0)
+              case TFF.Epsilon => TFF.BinaryFormula(TFF.&, conjunctionOfGuards, convertedBody0)
             }
           } else convertedBody0
           TFF.QuantifiedFormula(quantifier, escapedVariableList, convertedBody)
