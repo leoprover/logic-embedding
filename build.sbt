@@ -18,8 +18,6 @@ lazy val commonSettings = Seq(
   ),
   licenses += "BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause"),
 
-  version := "1.9.7",
-
   crossScalaVersions := Seq(scala2) ++ Seq(scala3),
   scalaVersion := crossScalaVersions.value.head,
   scalacOptions ++= Seq(
