@@ -18,14 +18,14 @@ lazy val commonSettings = Seq(
   ),
   licenses += "BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause"),
 
-  crossScalaVersions := Seq(scala2) ++ Seq(scala3),
+  crossScalaVersions := Seq(scala3) ++ Seq(scala2),
   scalaVersion := crossScalaVersions.value.head,
   scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
     ),
 
-  libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.7.5",
+  libraryDependencies += "io.github.leoprover" %% "scala-tptp-parser" % "1.8.0",
   libraryDependencies += "io.github.leoprover" %% "tptp-utils-runtime" % "1.5.0",
   libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % "test"
 )
