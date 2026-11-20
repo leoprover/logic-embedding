@@ -23,18 +23,10 @@ import scala.annotation.unused
  *   - different axiomatizations for modalities (multi-modal logics).
  *
  * Additionally, the output can be generated in polymorphic first-order logic (TF1 TPTP format)
- * when passing the [[FirstOrderManySortedToTXFEmbedding.FOMLToTXFEmbeddingParameter.POLYMORPHIC]] parameter.
+ * when passing the [[ModalEmbeddingLike.POLYMORPHIC]] parameter.
  */
 object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingLike {
-
-
-  object FOMLToTXFEmbeddingParameter extends Enumeration {
-    // Hidden on purpose, to allow distinction between the object itself and its values.
-    //    type FOMLToTXFEmbeddingParameter = Value
-    final val POLYMORPHIC, ALLOW_EMPTY_DOMAINS, NO_UNIVERSAL_S5 = Value
-  }
-  override type OptionType = FOMLToTXFEmbeddingParameter.type
-  override final def embeddingParameter: FOMLToTXFEmbeddingParameter.type = FOMLToTXFEmbeddingParameter
+  override final def supportedParameters: Set[Parameter] = Set(POLYMORPHIC, ALLOW_EMPTY_DOMAINS, NO_UNIVERSAL_S5)
 
   override final val name: String = "$$fomlModel"
   override final val version: String = "1.4.0"
@@ -42,24 +34,21 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
   override final def generateSpecification(specs: Map[String, String]): TPTP.TFFAnnotated =
     generateTFFSpecification(name, logicSpecParamNames, specs)
 
-  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
+  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     apply0(problem, embeddingOptions)
 
-  protected[embeddings] final def apply0(problem: TPTP.Problem, embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): TPTP.Problem =
+  protected[embeddings] final def apply0(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new FirstOrderManySortedToTXFEmbeddingImpl(problem, embeddingOptions).apply()
 
   override final def apply(formulas: Seq[TPTP.AnnotatedFormula],
-                           embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]): Seq[TPTP.AnnotatedFormula] =
+                           embeddingOptions: Set[EmbeddingParameterType]): Seq[TPTP.AnnotatedFormula] =
     apply(TPTP.Problem(Seq.empty, formulas, Map.empty), embeddingOptions).formulas
 
   /////////////////////////////////////////////////////////////////////////////////////////////
   /////////////// Embedding implementation BEGIN
   /////////////////////////////////////////////////////////////////////////////////////////////
   private[this] final class FirstOrderManySortedToTXFEmbeddingImpl(problem: TPTP.Problem,
-                                                                   embeddingOptions: Set[FOMLToTXFEmbeddingParameter.Value]) {
-
-    import FOMLToTXFEmbeddingParameter._
-
+                                                                   embeddingOptions: Set[EmbeddingParameterType]) {
     // Semantics dimensions
     // (1) Rigid or flexible symbols
     private[this] var rigidityMap: Map[String, Rigidity] = Map.empty // Assumption: It contains EVERY symbol (at the latest, after convertTypeFormula)
@@ -341,6 +330,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             quantifier match {
               case TFF.! => TFF.BinaryFormula(TFF.Impl, conjunctionOfGuards, convertedBody0)
               case TFF.? => TFF.BinaryFormula(TFF.&, conjunctionOfGuards, convertedBody0)
+              case TFF.Epsilon => TFF.BinaryFormula(TFF.&, conjunctionOfGuards, convertedBody0)
             }
           } else convertedBody0
           TFF.QuantifiedFormula(quantifier, escapedVariableList, convertedBody)
@@ -389,10 +379,10 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       }
     }
 
-    private[this] sealed abstract class BoxOrDiamond
-    private[this] final object Box extends BoxOrDiamond
-    private[this] final object Diamond extends BoxOrDiamond
-    private[this] def convertModality(modality: BoxOrDiamond, body: TFF.Formula, boundVars: Set[String], world: TFF.Term, index: Option[TFF.Term]): TFF.Formula = {
+    private sealed abstract class BoxOrDiamond
+    private object Box extends BoxOrDiamond
+    private object Diamond extends BoxOrDiamond
+    private def convertModality(modality: BoxOrDiamond, body: TFF.Formula, boundVars: Set[String], world: TFF.Term, index: Option[TFF.Term]): TFF.Formula = {
       val newWorldVariableName = generateFreshWorldVariable(boundVars)
       val newWorldVariable: TFF.Term = TFF.Variable(newWorldVariableName)
       val convertedBody0 = convertFormula(body, newWorldVariable, boundVars + newWorldVariableName )
@@ -459,6 +449,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
           }
         case TFF.FormulaTerm(formula) => TFF.FormulaTerm(convertFormula(formula, worldPlaceholder, boundVars))
         case TFF.Variable(name) => TFF.Variable(escapeTermVariable(name))
+//        case TFF.AtomicTerm(f, args) => TFF.AtomicTerm(f, args.map(convertTerm(_, worldPlaceholder, boundVars)))
         case _ => term
       }
     }

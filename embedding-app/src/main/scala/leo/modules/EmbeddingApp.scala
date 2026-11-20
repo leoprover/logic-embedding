@@ -2,16 +2,16 @@ package leo.modules
 
 import leo.datastructures.TPTP
 import leo.datastructures.TPTP.{AnnotatedFormula, Problem}
-import leo.modules.embeddings.{Embedding, EmbeddingException, UnsupportedFragmentException, EmbeddingN, Library, MalformedLogicSpecificationException, getLogicFromSpec, getLogicSpecFromProblem}
+import leo.modules.embeddings.{Embedding, EmbeddingException, EmbeddingN, Library, MalformedLogicSpecificationException, UnsupportedFragmentException, TypeErrorException, getLogicFromSpec, getLogicSpecFromProblem}
 import leo.modules.input.TPTPParser
 
-import scala.io.Source
 import java.io.{File, FileNotFoundException, PrintWriter}
+import java.nio.file.Path
 import scala.collection.mutable
 
 object EmbeddingApp {
   final val name: String = "embedproblem"
-  final val version: String = "1.9.0"
+  final val version: String = "2.0.0"
 
   private[this] var inputFileName = ""
   private[this] var outputFileName: Option[String] = None
@@ -19,6 +19,7 @@ object EmbeddingApp {
   private[this] var parameterNames: Set[String] = Set.empty
   private[this] var specs: Map[String, String] = Map.empty
   private[this] var tstpOutput: Boolean = false
+  private[this] val tptpHomeDirectory: Option[String] = sys.env.get("TPTP")
 
   final def main(args: Array[String]): Unit = {
     if (args.contains("--help")) {
@@ -29,23 +30,15 @@ object EmbeddingApp {
     }
     if (args.isEmpty) usage()
     else {
-      var infile: Option[Source] = None
+      var infile: Option[Path] = None
       var outfile: Option[PrintWriter] = None
       var error: Option[(String, String)] = None // Tuple (SZS value, message)
 
       try {
         parseArgs(args.toSeq)
-        // Read input
-        infile = Some(if (inputFileName == "-") io.Source.stdin else io.Source.fromFile(inputFileName))
-        // Create local copy if it is from stdin; since we cannot reset the inputstreamreader afterwards
-        val infileCopyAsString = if (inputFileName == "-") {
-          val res = infile.get.getLines().mkString("\n")
-          infile = Some(io.Source.fromString(res)) // reset infile virtually to stdin input
-          Some(res)
-        } else None
-
+        infile = Some(if (inputFileName == "-") Path.of("-") else Path.of(inputFileName).toAbsolutePath)
         // Parse and select embedding
-        val parsedInput = TPTPParser.problem(infile.get)
+        val parsedInput = leo.modules.tptputils.parseTPTPFileWithIncludes(infile.get, tptpHomeDirectory)
         val maybeLogicSpec = getLogicSpecFromProblem(parsedInput.formulas)
         val maybeGoalLogic = getLogic(maybeLogicSpec)
         // result is not a sequence, we need to print every entry individually
@@ -55,12 +48,8 @@ object EmbeddingApp {
             sb.append("% Info: No logic specification given, input problem is returned unchanged. Maybe specify logic with the -l option?\n")
             if (tstpOutput) sb.append(s"% SZS status Success for $inputFileName\n")
             if (tstpOutput) sb.append(s"% SZS output start ListOfFormulae for $inputFileName\n")
-            // if not from stdin, we can safely re-read the input file, so we just reset the infile reader
-            val copyOfInputLines = if (inputFileName == "-") Seq(infileCopyAsString.get) else infile.get.reset().getLines()
-            copyOfInputLines foreach { line => // just print it
-              sb.append(line)
-              sb.append("\n")
-            }
+            sb.append(leo.modules.tptputils.tptpProblemToString(parsedInput))
+            sb.append("\n")
             if (tstpOutput) sb.append(s"% SZS output end ListOfFormulae for $inputFileName\n")
             Seq(sb.toString())
           case Some(goalLogic) => // goal logic set, do the embedding steps
@@ -79,10 +68,9 @@ object EmbeddingApp {
                 // Transform embedding parameters (explicitly repeated because of subtype incompability. Ugly, but small scope.)
                 //noinspection DuplicatedCode
                 val parameters = parameterNames.map { p =>
-                  try {
-                    embeddingFunctionN.embeddingParameter.withName(p)
-                  } catch {
-                    case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
+                  embeddingFunctionN.embeddingParameter.valueOf(p) match {
+                    case Some(value) => value
+                    case None => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
                   }
                 }
                 val embeddedProblems = embeddingFunctionN.applyN(problemToBeEmbedded, parameters)
@@ -91,10 +79,9 @@ object EmbeddingApp {
                 // Transform embedding parameters
                 //noinspection DuplicatedCode
                 val parameters = parameterNames.map { p =>
-                  try {
-                    embeddingFunction.embeddingParameter.withName(p)
-                  } catch {
-                    case _: NoSuchElementException => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
+                  embeddingFunction.embeddingParameter.valueOf(p) match {
+                    case Some(value) => value
+                    case None => throw new UnknownParameterException(p, embeddingFunction.embeddingParameter.values.mkString(","))
                   }
                 }
                 val embeddedProblem = embeddingFunction.apply(problemToBeEmbedded, parameters)
@@ -138,8 +125,11 @@ object EmbeddingApp {
           error = Some("InputError", s"File cannot be found or is not readable/writable: ${e.getMessage}")
         case e: TPTPParser.TPTPParseException =>
           error = Some("SyntaxError", s"Input file could not be parsed, parse error at ${e.line}:${e.offset}: ${e.getMessage}")
+        case e: TypeErrorException =>
+          error = Some("TypeError", s"Unification process during type inference of equality failed. Unable to unify ${e.left.pretty} and ${e.right.pretty}")
         case e: Throwable =>
           error = Some("Error", s"Unexpected error: ${e.getMessage}. This is considered an implementation error, please report this!")
+          System.err.println(s"Exception: ${e.toString}")
           e.printStackTrace()
       } finally {
         if (error.nonEmpty) {
@@ -159,7 +149,6 @@ object EmbeddingApp {
             } else println(s"$szsStatus: $errorMessage")
           }
         }
-        try { infile.foreach(_.close())  } catch { case _:Throwable => () }
         try { outfile.foreach(_.close()) } catch { case _:Throwable => () }
         if (error.nonEmpty) System.exit(1)
       }

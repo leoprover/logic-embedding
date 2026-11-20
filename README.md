@@ -1,6 +1,6 @@
 logic-embedding
 ------
-_A tool for embedding non-classical logics into higher-order logic (HOL)_
+_A tool and runtime library for embedding non-classical logics into classical logics_
 
 The tool translates a TPTP problem statement formulated in a non-classical logic 
 (using the logic specification format) into classical higher-order logic
@@ -8,7 +8,11 @@ The tool translates a TPTP problem statement formulated in a non-classical logic
 A description of the tool is available as tool paper [^2], the underlying TPTP syntax is
 described in [^3].
 
-For references to the tool, please use [![DOI](https://zenodo.org/badge/328684921.svg)](https://zenodo.org/badge/latestdoi/328684921)
+The runtime library is available at Maven central: ![Maven Central Version](https://img.shields.io/maven-central/v/io.github.leoprover/logic-embedding-runtime_2.13?label=Maven%20Central%20(Scala%202.13.X))
+ ![Maven Central Version](https://img.shields.io/maven-central/v/io.github.leoprover/logic-embedding-runtime_3?label=Maven%20Central%20(Scala%203.9.X))
+
+
+For references to the tool, please use [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.5913215-blue?style=flat&link=https%3A%2F%2Fzenodo.org%2Frecords%2F23339079)](https://zenodo.org/records/23339079)   
 
 
 ## Logics
@@ -206,6 +210,31 @@ usage: embedproblem [options] <problem file>
   --help
      Prints this description and terminates.
 ```
+
+## Usage as runtime library (Scala 2.13.X and Scala.3.9.X)
+![Maven Central Version](https://img.shields.io/maven-central/v/io.github.leoprover/logic-embedding-runtime_2.13?label=Maven%20Central%20(Scala%202.13.X))
+ ![Maven Central Version](https://img.shields.io/maven-central/v/io.github.leoprover/logic-embedding-runtime_3?label=Maven%20Central%20(Scala%203.9.X))
+
+`logic-embedding-runtime` is available on [Maven Central (for Scala 2.13.X)](https://central.sonatype.com/artifact/io.github.leoprover/logic-embedding-runtime_2.13) resp. [Maven Central (for Scala 3.9.X)](https://central.sonatype.com/artifact/io.github.leoprover/logic-embedding-runtime_3).
+
+### sbt
+
+In order to include `logic-embedding-runtime` into your project via SBT, just add the following dependency to your `build.sbt`:
+```scala
+libraryDependencies += "io.github.leoprover" %% "logic-embedding-runtime" % "2.0.0"
+```
+
+### Maven
+
+In order to include `logic-embedding-runtime` into your project via Maven, just add the following dependency (shown for Scala 2.13.X, replace "_2.13" with "_3" for Scala 3.9.X):
+```xml
+<dependency>
+  <groupId>io.github.leoprover</groupId>
+  <artifactId>logic-embedding-runtime_2.13</artifactId>
+  <version>2.0.0</version>
+</dependency>
+```
+
 
 
 ## Contact

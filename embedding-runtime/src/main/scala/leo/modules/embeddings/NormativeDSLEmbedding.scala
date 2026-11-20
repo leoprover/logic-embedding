@@ -6,15 +6,9 @@ import datastructures.TPTP
 import TPTP.{AnnotatedFormula, TFF, TFFAnnotated}
 
 
-object NormativeDSLEmbedding extends Embedding {
-
-  object NormativeDSLEmbeddingParameter extends Enumeration { }
-
-  override final type OptionType = NormativeDSLEmbeddingParameter.type
-
+object NormativeDSLEmbedding extends Embedding with NoEmbeddingParameters {
   override final val name: String = "$$normative"
-  override final val version: String = "1.1"
-  override final def embeddingParameter: NormativeDSLEmbeddingParameter.type = NormativeDSLEmbeddingParameter
+  override final val version: String = "1.1.1"
 
   override final def generateSpecification(specs: Map[String, String]): TPTP.THFAnnotated =  {
     import leo.modules.input.TPTPParser.annotatedTHF
@@ -30,7 +24,7 @@ object NormativeDSLEmbedding extends Embedding {
     annotatedTHF(spec.toString)
   }
 
-  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[NormativeDSLEmbeddingParameter.Value]): TPTP.Problem =
+  override final def apply(problem: TPTP.Problem, embeddingOptions: Set[EmbeddingParameterType]): TPTP.Problem =
     new NormativeDSLEmbeddingImpl(problem).apply()
 
   /////////////////////////////////////////////////////////////////////////////////
