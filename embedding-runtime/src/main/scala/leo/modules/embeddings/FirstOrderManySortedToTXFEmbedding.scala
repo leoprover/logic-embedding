@@ -674,6 +674,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       // but without all eiw predicates where the type of xi was never used in a quantification
       // NB: Only types that are non-constant-domain occur in `quantifierTypes`, and only these
       // types should used as argument for `ty`.
+      // Also, if symbol has flexible designation, it needs to be .... => eiw(f(w,x1,...,xn),w)
       val variables = argTypes.zipWithIndex.map { case (argTy, idx) =>
         (s"X$idx", Some(argTy))
       }
@@ -681,7 +682,11 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
         if (quantifierTypes.contains(variableTy.get)) maybeExistencePredicateIfNeeded(variableTy.get, TFF.Variable("W"), TFF.Variable(variableName))
         else None
       }
-      val existenceOfResult: TFF.Formula = existencePredicate(goalType, TFF.Variable("W"), TFF.AtomicTerm(symbol, variables.map(x => TFF.Variable(x._1))))
+      val existenceOfResult0: TFF.Term = getRigidityOfSymbol(symbol, ty) match {
+        case Rigid => TFF.AtomicTerm(symbol, variables.map(x => TFF.Variable(x._1)))
+        case Flexible => TFF.AtomicTerm(symbol, Seq(TFF.Variable("W")) ++ variables.map(x => TFF.Variable(x._1)))
+      }
+      val existenceOfResult: TFF.Formula = existencePredicate(goalType, TFF.Variable("W"), existenceOfResult0)
       val body0 = existencePredicates.foldRight(existenceOfResult){case (nextPredicate,acc) => TFF.BinaryFormula(TFF.Impl, nextPredicate, acc)}
       val body = TFF.QuantifiedFormula(TFF.!, ("W", Some(worldType)) +: variables, body0)
       TFFAnnotated(name, "axiom", TFF.Logical(body), None)
