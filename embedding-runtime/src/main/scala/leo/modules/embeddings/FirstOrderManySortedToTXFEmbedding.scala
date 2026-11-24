@@ -140,7 +140,7 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
     }
 
     private[this] def isMultiModal: Boolean = { indexValues.nonEmpty }
-    private[this] var isS5 = false // True iff mono-modal and modality is S5
+    private[this] var allowS5Optimizations = false // True iff mono-modal, modality is S5 and terms are local
     private[this] var headless = true // True iff embedding is used for model verification only (i.e., modal logic parameters were not given in logic spec)
 
     /** Only conversion needed: If sort formula was introduced as interpretation domain type, then
@@ -502,9 +502,9 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
             val systemName = modalSystemOrAxiomNameList.head
             systemName match {
               case "$modal_system_S5" =>
-                isS5 = true
-                if (noUniversalS5) modalSystemTable("$modal_system_S5_equiv_relation")
-                else modalSystemTable(systemName)
+                allowS5Optimizations = (termLocality == Local) && !noUniversalS5 // only allow for global terms
+                if (allowS5Optimizations) modalSystemTable(systemName)
+                else modalSystemTable("$modal_system_S5_equiv_relation")
               case other => modalSystemTable(other)
             }
           } else modalSystemOrAxiomNameList
@@ -530,8 +530,8 @@ object FirstOrderManySortedToTXFEmbedding extends Embedding with ModalEmbeddingL
       }
       // Specify properties on eiw-predicate if required
       if (!headless) {
-        if (isS5) { /* isS5 is false if problem is multi-modal */
-          /* Special case: if it's S5 and non-varying quantification (and mono-modal), every domain is identical. So specify constant domain for every type. */
+        if (allowS5Optimizations) { /* allowS5Optimizations is false if problem is multi-modal or otherwise this optimization is not allowed */
+          /* Special case: if it's S5 and non-varying quantification (and mono-modal with local terms), every domain is identical. So specify constant domain for every type. */
           quantifierTypes.foreach { ty =>
             if (domainMap(ty) != VaryingDomain) result.append(constantExistsInWorldTPTPDef(poly = polymorphic, ty))
           }
