@@ -63,8 +63,12 @@ lazy val app = (project in file("embedding-app"))
     assembly/mainClass := Some("leo.modules.EmbeddingApp"),
     assembly/test := {},
     assembly/assemblyJarName := s"${name.value}-${version.value}.jar",
+    nativeImageOptions += s"-H:+UnlockExperimentalVMOptions",
     nativeImageOptions += s"-H:ReflectionConfigurationFiles=${baseDirectory.value / ".." / "contrib" / "native-image-configs" / "reflect-config.json"}",
     nativeImageOptions += s"-H:ConfigurationFileDirectories=${baseDirectory.value / ".."  / "contrib" / "native-image-configs" }",
     nativeImageOptions +="-H:+JNI",
+    nativeImageOptions += s"--future-defaults=all",
+    nativeImageOptions += s"-R:MaxHeapSize=256m",
+    nativeImageOptions += s"-march=native",
     publish / skip := true
 	).dependsOn(runtime)
